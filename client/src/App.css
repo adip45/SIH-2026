@@ -925,3 +925,60 @@ button {
     font-size: 35px;
   }
 }
+/* CLICKABLE ELEMENTS */
+
+.nav-links button {
+  background: none;
+  border: none;
+  color: #cbd5e1;
+  font-size: 17px;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+.nav-links button:hover {
+  color: #38bdf8;
+}
+
+.clickable {
+  cursor: pointer;
+}
+
+.destination-btn {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: none;
+  background: #38bdf8;
+  color: #071321;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 22px;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+.destination-btn:hover {
+  transform: scale(1.12);
+  box-shadow: 0 8px 20px rgba(56, 189, 248, 0.35);
+}
+/* FIX FLOATING CARD BUTTONS */
+
+.floating-card {
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  cursor: pointer;
+  z-index: 10;
+}
+
+button.floating-card {
+  font-family: inherit;
+  text-align: left;
+  outline: none;
+}
+
+button.floating-card:hover {
+  transform: translateY(-5px) scale(1.03);
+  border-color: #38bdf8;
+  box-shadow: 0 20px 40px rgba(56, 189, 248, 0.2);
+}
