@@ -108,6 +108,19 @@ function App() {
   const [showUserLogin, setShowUserLogin] =
     useState(false);
 
+  /* =========================================================
+     ADDED: LOCAL LOGIN STATE
+  ========================================================= */
+
+  const [showLocalLogin, setShowLocalLogin] =
+    useState(false);
+
+  const [localEmail, setLocalEmail] =
+    useState("");
+
+  const [localPassword, setLocalPassword] =
+    useState("");
+
   const [userEmail, setUserEmail] = useState("");
   const [userPassword, setUserPassword] =
     useState("");
@@ -120,6 +133,7 @@ function App() {
     setSelectedDestination(null);
     setShowLogin(false);
     setShowUserLogin(false);
+    setShowLocalLogin(false);
 
     setTimeout(() => {
       document.getElementById(id)?.scrollIntoView({
@@ -134,6 +148,7 @@ function App() {
     setSelectedDestination(destination);
     setShowLogin(false);
     setShowUserLogin(false);
+    setShowLocalLogin(false);
 
     window.scrollTo({
       top: 0,
@@ -156,6 +171,7 @@ function App() {
   const openLogin = () => {
     setSelectedDestination(null);
     setShowUserLogin(false);
+    setShowLocalLogin(false);
     setShowLogin(true);
 
     window.scrollTo({
@@ -167,6 +183,7 @@ function App() {
   const closeLogin = () => {
     setShowLogin(false);
     setShowUserLogin(false);
+    setShowLocalLogin(false);
 
     setTimeout(() => {
       document.getElementById("home")?.scrollIntoView({
@@ -200,6 +217,150 @@ function App() {
       behavior: "smooth",
     });
   };
+
+  /* =========================================================
+     ADDED: OPEN LOCAL LOGIN
+  ========================================================= */
+
+  const openLocalLogin = () => {
+    setShowLogin(false);
+    setShowUserLogin(false);
+    setShowLocalLogin(true);
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  };
+
+  /* =========================================================
+     ADDED: BACK TO LOGIN ROLE SELECTION
+  ========================================================= */
+
+  const backToLocalRoleSelection = () => {
+    setShowLocalLogin(false);
+    setShowLogin(true);
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  };
+
+  /* =========================================================
+     ADDED: LOCAL EMAIL LOGIN
+  ========================================================= */
+
+  const handleLocalLogin = async (
+    event: FormEvent<HTMLFormElement>
+  ) => {
+    event.preventDefault();
+
+    if (!localEmail || !localPassword) {
+      alert(
+        "Please enter your email and password."
+      );
+      return;
+    }
+
+    try {
+      const result =
+        await signInWithEmailAndPassword(
+          auth,
+          localEmail,
+          localPassword
+        );
+
+      const user = result.user;
+
+      alert(
+        `Welcome back to TravelBoost!\nLogged in as ${
+          user.email || localEmail
+        }`
+      );
+
+      console.log(
+        "Local provider user:",
+        user
+      );
+    } catch (error) {
+      console.error(
+        "Local login error:",
+        error
+      );
+
+      const errorCode =
+        (error as {
+          code?: string;
+        })?.code;
+
+      const errorMessage =
+        (error as {
+          message?: string;
+        })?.message;
+
+      alert(
+        `Local Login Error:\n\nCode: ${
+          errorCode || "unknown"
+        }\n\nMessage: ${
+          errorMessage || "Unknown error"
+        }`
+      );
+    }
+  };
+
+  /* =========================================================
+     ADDED: LOCAL GOOGLE LOGIN
+  ========================================================= */
+
+  const handleLocalGoogleLogin =
+    async () => {
+      try {
+        const result =
+          await signInWithPopup(
+            auth,
+            googleProvider
+          );
+
+        const user = result.user;
+
+        alert(
+          `Welcome to TravelBoost, ${
+            user.displayName ||
+            user.email ||
+            "Local Provider"
+          }!`
+        );
+
+        console.log(
+          "Local Google user:",
+          user
+        );
+      } catch (error) {
+        console.error(
+          "Local Google login error:",
+          error
+        );
+
+        const errorCode =
+          (error as {
+            code?: string;
+          })?.code;
+
+        const errorMessage =
+          (error as {
+            message?: string;
+          })?.message;
+
+        alert(
+          `Local Google Login Error:\n\nCode: ${
+            errorCode || "unknown"
+          }\n\nMessage: ${
+            errorMessage || "Unknown error"
+          }`
+        );
+      }
+    };
 
   /* =========================================================
      EMAIL / PASSWORD LOGIN
@@ -326,13 +487,6 @@ function App() {
             }
           )?.code;
 
-        const errorMessage =
-          (
-            error as {
-              message?: string;
-            }
-          )?.message;
-
         if (
           errorCode ===
           "auth/popup-closed-by-user"
@@ -358,11 +512,7 @@ function App() {
         }
 
         alert(
-          `Google Login Error:\n\nCode: ${
-            errorCode || "unknown"
-          }\n\nMessage: ${
-            errorMessage || "Unknown error"
-          }`
+          "Google login failed. Please try again."
         );
       }
     };
@@ -407,13 +557,6 @@ function App() {
             }
           )?.code;
 
-        const errorMessage =
-          (
-            error as {
-              message?: string;
-            }
-          )?.message;
-
         if (
           errorCode ===
           "auth/popup-closed-by-user"
@@ -439,14 +582,162 @@ function App() {
         }
 
         alert(
-          `Apple Login Error:\n\nCode: ${
-            errorCode || "unknown"
-          }\n\nMessage: ${
-            errorMessage || "Unknown error"
-          }`
+          "Apple login could not be completed. Please check the Apple provider configuration in Firebase."
         );
       }
     };
+
+  /* =========================================================
+     LOCAL LOGIN PAGE
+  ========================================================= */
+
+  if (showLocalLogin) {
+    return (
+      <div className="app login-page user-login-page">
+        <div className="background-glow glow-one" />
+        <div className="background-glow glow-two" />
+
+        <nav className="navbar login-navbar">
+          <button
+            type="button"
+            className="logo logo-button"
+            onClick={closeLogin}
+            aria-label="Back to TravelBoost home"
+          >
+            Travel<span>Boost</span>
+          </button>
+
+          <button
+            type="button"
+            className="login-back-button"
+            onClick={backToLocalRoleSelection}
+          >
+            ← Back
+          </button>
+        </nav>
+
+        <main className="user-login-content">
+          <div className="user-login-heading">
+            <div className="user-login-icon">
+              🏡
+            </div>
+
+            <p className="tag">
+              FOR LOCAL PROVIDERS
+            </p>
+
+            <h1>
+              Welcome back to{" "}
+              <span>TravelBoost.</span>
+            </h1>
+
+            <p>
+              Sign in to manage your local
+              provider account.
+            </p>
+          </div>
+
+          <form
+            className="user-login-card"
+            onSubmit={handleLocalLogin}
+          >
+            <div className="login-input-group">
+              <label htmlFor="local-email">
+                Email Address
+              </label>
+
+              <input
+                id="local-email"
+                type="email"
+                placeholder="you@example.com"
+                value={localEmail}
+                onChange={(event) =>
+                  setLocalEmail(
+                    event.target.value
+                  )
+                }
+                autoComplete="email"
+              />
+            </div>
+
+            <div className="login-input-group">
+              <label htmlFor="local-password">
+                Password
+              </label>
+
+              <input
+                id="local-password"
+                type="password"
+                placeholder="Enter your password"
+                value={localPassword}
+                onChange={(event) =>
+                  setLocalPassword(
+                    event.target.value
+                  )
+                }
+                autoComplete="current-password"
+              />
+            </div>
+
+            <div className="login-form-options">
+              <label className="remember-option">
+                <input
+                  type="checkbox"
+                  defaultChecked
+                />
+
+                <span>
+                  Remember me
+                </span>
+              </label>
+
+              <button
+                type="button"
+                className="forgot-password"
+                onClick={() =>
+                  alert(
+                    "Password recovery will be available soon."
+                  )
+                }
+              >
+                Forgot password?
+              </button>
+            </div>
+
+            <button
+              type="submit"
+              className="primary-btn user-login-submit"
+            >
+              Sign In →
+            </button>
+
+            <div className="login-divider">
+              <span>OR</span>
+            </div>
+
+            <button
+              type="button"
+              className="social-login-btn google-login-btn"
+              onClick={handleLocalGoogleLogin}
+            >
+              <span className="social-login-icon">
+                G
+              </span>
+
+              <span>
+                Continue with Google
+              </span>
+            </button>
+
+            <p className="login-register-text">
+              Local provider access is reserved
+              for registered TravelBoost partners.
+            </p>
+          </form>
+        </main>
+      </div>
+    );
+  }
 
   /* =========================================================
      USER LOGIN PAGE
@@ -730,11 +1021,7 @@ function App() {
             <button
               type="button"
               className="login-role-card"
-              onClick={() =>
-                alert(
-                  "Local Login coming next!"
-                )
-              }
+              onClick={openLocalLogin}
             >
               <div className="login-role-icon">
                 🏡
