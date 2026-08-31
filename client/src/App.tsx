@@ -163,7 +163,7 @@ function App() {
   const [userInterest, setUserInterest] =
     useState("Culture");
 
-  const [peopleCount, setPeopleCount] =
+  const [peopleCount] =
     useState(1240);
 
   /* =========================================================
@@ -185,7 +185,7 @@ function App() {
   const [providerType, setProviderType] =
     useState("Homestay");
 
-  const [providerRating, setProviderRating] =
+  const [providerRating] =
     useState("4.8");
 
   const [providerLanguages, setProviderLanguages] =
@@ -1389,15 +1389,6 @@ function App() {
           "Apple user:",
           user
         );
-
-        setShowUserLogin(false);
-        setShowLogin(false);
-        setShowUserDashboard(true);
-
-        window.scrollTo({
-          top: 0,
-          behavior: "smooth",
-        });
       } catch (error) {
         console.error(
           "Apple login error:",
