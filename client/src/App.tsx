@@ -1389,6 +1389,15 @@ function App() {
           "Apple user:",
           user
         );
+
+        setShowUserLogin(false);
+        setShowLogin(false);
+        setShowUserDashboard(true);
+
+        window.scrollTo({
+          top: 0,
+          behavior: "smooth",
+        });
       } catch (error) {
         console.error(
           "Apple login error:",
