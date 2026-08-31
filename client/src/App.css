@@ -1859,3 +1859,52 @@ p {
     font-size: 13px;
   }
 }
+/* =========================================================
+   LOCAL LOGIN PAGE
+   ADDITION ONLY - EXISTING CSS REMAINS UNCHANGED
+========================================================= */
+
+.user-login-page .user-login-icon {
+  background:
+    linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.72),
+      rgba(255, 255, 255, 0.42)
+    );
+
+  border:
+    1px solid
+    rgba(196, 122, 68, 0.18);
+
+  box-shadow:
+    0 15px 35px
+    rgba(70, 55, 40, 0.08),
+    inset 0 1px 0
+    rgba(255, 255, 255, 0.75);
+}
+
+.user-login-page .user-login-card {
+  box-shadow:
+    0 30px 80px
+    rgba(70, 55, 40, 0.10),
+    inset 0 1px 0
+    rgba(255, 255, 255, 0.78);
+}
+
+.user-login-page .google-login-btn {
+  margin-bottom: 22px;
+}
+
+.user-login-page .login-register-text {
+  line-height: 1.6;
+}
+
+@media (max-width: 650px) {
+  .user-login-page .user-login-card {
+    width: 100%;
+  }
+
+  .user-login-page .google-login-btn {
+    margin-bottom: 18px;
+  }
+}
