@@ -326,6 +326,13 @@ function App() {
             }
           )?.code;
 
+        const errorMessage =
+          (
+            error as {
+              message?: string;
+            }
+          )?.message;
+
         if (
           errorCode ===
           "auth/popup-closed-by-user"
@@ -351,7 +358,11 @@ function App() {
         }
 
         alert(
-          "Google login failed. Please try again."
+          `Google Login Error:\n\nCode: ${
+            errorCode || "unknown"
+          }\n\nMessage: ${
+            errorMessage || "Unknown error"
+          }`
         );
       }
     };
@@ -396,6 +407,13 @@ function App() {
             }
           )?.code;
 
+        const errorMessage =
+          (
+            error as {
+              message?: string;
+            }
+          )?.message;
+
         if (
           errorCode ===
           "auth/popup-closed-by-user"
@@ -421,7 +439,11 @@ function App() {
         }
 
         alert(
-          "Apple login could not be completed. Please check the Apple provider configuration in Firebase."
+          `Apple Login Error:\n\nCode: ${
+            errorCode || "unknown"
+          }\n\nMessage: ${
+            errorMessage || "Unknown error"
+          }`
         );
       }
     };
