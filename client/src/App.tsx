@@ -30,6 +30,7 @@ const destinations: Destination[] = [
       "Hadimba Temple",
     ],
   },
+
   {
     id: "goa",
     name: "Goa",
@@ -47,6 +48,7 @@ const destinations: Destination[] = [
       "Dudhsagar Falls",
     ],
   },
+
   {
     id: "jaipur",
     name: "Jaipur",
@@ -64,6 +66,7 @@ const destinations: Destination[] = [
       "Jantar Mantar",
     ],
   },
+
   {
     id: "kerala",
     name: "Kerala",
@@ -87,8 +90,11 @@ function App() {
   const [selectedDestination, setSelectedDestination] =
     useState<Destination | null>(null);
 
+  const [showLogin, setShowLogin] = useState(false);
+
   const scrollToSection = (id: string) => {
     setSelectedDestination(null);
+    setShowLogin(false);
 
     setTimeout(() => {
       document.getElementById(id)?.scrollIntoView({
@@ -99,6 +105,7 @@ function App() {
 
   const openDestination = (destination: Destination) => {
     setSelectedDestination(destination);
+    setShowLogin(false);
 
     window.scrollTo({
       top: 0,
@@ -116,14 +123,184 @@ function App() {
     }, 100);
   };
 
+  const openLogin = () => {
+    setSelectedDestination(null);
+    setShowLogin(true);
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  };
+
+  const closeLogin = () => {
+    setShowLogin(false);
+
+    setTimeout(() => {
+      document.getElementById("home")?.scrollIntoView({
+        behavior: "smooth",
+      });
+    }, 100);
+  };
+
+  /*
+    LOGIN ROLE SELECTION PAGE
+  */
+  if (showLogin) {
+    return (
+      <div className="app login-page">
+        <div className="background-glow glow-one" />
+        <div className="background-glow glow-two" />
+
+        {/* LOGIN NAVBAR */}
+
+        <nav className="navbar login-navbar">
+          <button
+            type="button"
+            className="logo logo-button"
+            onClick={closeLogin}
+            aria-label="Back to TravelBoost home"
+          >
+            Travel<span>Boost</span>
+          </button>
+
+          <button
+            type="button"
+            className="login-back-button"
+            onClick={closeLogin}
+          >
+            ← Back
+          </button>
+        </nav>
+
+        {/* LOGIN CONTENT */}
+
+        <main className="login-content">
+          <div className="login-heading">
+            <p className="tag">
+              TRAVEL • DISCOVER • CONNECT
+            </p>
+
+            <h1>
+              Welcome to <span>TravelBoost.</span>
+            </h1>
+
+            <p>
+              Choose how you want to continue.
+            </p>
+          </div>
+
+          <div className="login-role-grid">
+
+            {/* USER LOGIN */}
+
+            <button
+              type="button"
+              className="login-role-card"
+              onClick={() =>
+                alert("User Login coming next!")
+              }
+            >
+              <div className="login-role-icon">
+                👤
+              </div>
+
+              <div className="login-role-content">
+                <span className="login-role-label">
+                  FOR TRAVELLERS
+                </span>
+
+                <h2>User Login</h2>
+
+                <p>
+                  Discover destinations, plan trips,
+                  check crowds, and explore local experiences.
+                </p>
+              </div>
+
+              <span className="login-role-arrow">
+                →
+              </span>
+            </button>
+
+            {/* LOCAL LOGIN */}
+
+            <button
+              type="button"
+              className="login-role-card"
+              onClick={() =>
+                alert("Local Login coming next!")
+              }
+            >
+              <div className="login-role-icon">
+                🏡
+              </div>
+
+              <div className="login-role-content">
+                <span className="login-role-label">
+                  FOR LOCAL PROVIDERS
+                </span>
+
+                <h2>Local Login</h2>
+
+                <p>
+                  Manage your homestay, guide profile,
+                  local services, and traveller requests.
+                </p>
+              </div>
+
+              <span className="login-role-arrow">
+                →
+              </span>
+            </button>
+
+            {/* AUTHORITY LOGIN */}
+
+            <button
+              type="button"
+              className="login-role-card"
+              onClick={() =>
+                alert("Authority Login coming next!")
+              }
+            >
+              <div className="login-role-icon">
+                🛡️
+              </div>
+
+              <div className="login-role-content">
+                <span className="login-role-label">
+                  FOR AUTHORITIES
+                </span>
+
+                <h2>Authority Login</h2>
+
+                <p>
+                  Monitor crowds, manage complaints,
+                  and oversee tourism and public safety.
+                </p>
+              </div>
+
+              <span className="login-role-arrow">
+                →
+              </span>
+            </button>
+
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   /*
     DESTINATION DETAILS PAGE
   */
+
   if (selectedDestination) {
     return (
       <div className="app destination-page">
         <nav className="navbar">
           <button
+            type="button"
             className="logo logo-button"
             onClick={() => scrollToSection("home")}
           >
@@ -131,25 +308,36 @@ function App() {
           </button>
 
           <div className="nav-links">
-            <button onClick={closeDestination}>Explore</button>
+            <button
+              type="button"
+              onClick={closeDestination}
+            >
+              Explore
+            </button>
           </div>
 
-          <button className="login-btn" onClick={closeDestination}>
+          <button
+            type="button"
+            className="login-btn"
+            onClick={closeDestination}
+          >
             ← Back
           </button>
         </nav>
 
         <main className="destination-details">
+
           <div
             className="destination-hero-image"
             style={{
               backgroundImage: `linear-gradient(
                 rgba(7, 19, 33, 0.35),
                 rgba(7, 19, 33, 0.85)
-              ), url(${selectedDestination.image})`,
+              ), url("${selectedDestination.image}")`,
             }}
           >
             <button
+              type="button"
               className="back-btn"
               onClick={closeDestination}
               aria-label="Go back to destinations"
@@ -177,7 +365,8 @@ function App() {
               </p>
 
               <h2>
-                Discover the beauty of {selectedDestination.name}
+                Discover the beauty of{" "}
+                {selectedDestination.name}
               </h2>
 
               <p className="destination-description">
@@ -185,32 +374,49 @@ function App() {
               </p>
 
               <div className="destination-stats">
+
                 <div className="stat-card">
-                  <span className="stat-icon">📅</span>
+                  <span className="stat-icon">
+                    📅
+                  </span>
 
                   <div>
                     <p>Best Time</p>
-                    <strong>{selectedDestination.bestTime}</strong>
+
+                    <strong>
+                      {selectedDestination.bestTime}
+                    </strong>
                   </div>
                 </div>
 
                 <div className="stat-card">
-                  <span className="stat-icon">🕒</span>
+                  <span className="stat-icon">
+                    🕒
+                  </span>
 
                   <div>
                     <p>Recommended Stay</p>
-                    <strong>{selectedDestination.duration}</strong>
+
+                    <strong>
+                      {selectedDestination.duration}
+                    </strong>
                   </div>
                 </div>
 
                 <div className="stat-card">
-                  <span className="stat-icon">⭐</span>
+                  <span className="stat-icon">
+                    ⭐
+                  </span>
 
                   <div>
                     <p>TravelBoost Pick</p>
-                    <strong>Highly Recommended</strong>
+
+                    <strong>
+                      Highly Recommended
+                    </strong>
                   </div>
                 </div>
+
               </div>
             </div>
 
@@ -219,7 +425,9 @@ function App() {
                 TOP EXPERIENCES
               </p>
 
-              <h2>Things you shouldn't miss</h2>
+              <h2>
+                Things you shouldn't miss
+              </h2>
 
               <div className="highlights-grid">
                 {selectedDestination.highlights.map(
@@ -229,7 +437,10 @@ function App() {
                       key={highlight}
                     >
                       <span>
-                        {String(index + 1).padStart(2, "0")}
+                        {String(index + 1).padStart(
+                          2,
+                          "0"
+                        )}
                       </span>
 
                       <h3>{highlight}</h3>
@@ -246,16 +457,19 @@ function App() {
                 </p>
 
                 <h2>
-                  Start planning your {selectedDestination.name} trip
+                  Start planning your{" "}
+                  {selectedDestination.name} trip
                 </h2>
 
                 <p>
-                  Discover attractions, create your itinerary, and make
-                  your journey unforgettable.
+                  Discover attractions, create your
+                  itinerary, and make your journey
+                  unforgettable.
                 </p>
               </div>
 
               <button
+                type="button"
                 className="primary-btn"
                 onClick={() =>
                   alert(
@@ -275,12 +489,15 @@ function App() {
   /*
     MAIN WEBSITE
   */
+
   return (
     <div className="app">
 
       {/* NAVBAR */}
+
       <nav className="navbar">
         <button
+          type="button"
           className="logo logo-button"
           onClick={() => scrollToSection("home")}
           aria-label="Go to home"
@@ -289,28 +506,43 @@ function App() {
         </button>
 
         <div className="nav-links">
-          <button onClick={() => scrollToSection("home")}>
+          <button
+            type="button"
+            onClick={() => scrollToSection("home")}
+          >
             Home
           </button>
 
-          <button onClick={() => scrollToSection("destinations")}>
+          <button
+            type="button"
+            onClick={() =>
+              scrollToSection("destinations")
+            }
+          >
             Explore
           </button>
 
-          <button onClick={() => scrollToSection("about")}>
+          <button
+            type="button"
+            onClick={() =>
+              scrollToSection("about")
+            }
+          >
             About
           </button>
         </div>
 
         <button
+          type="button"
           className="login-btn"
-          onClick={() => scrollToSection("destinations")}
+          onClick={openLogin}
         >
           Get Started
         </button>
       </nav>
 
       {/* HERO SECTION */}
+
       <main id="home" className="hero">
 
         <div className="hero-content">
@@ -328,37 +560,52 @@ function App() {
           </h1>
 
           <p className="description">
-            TravelBoost helps you discover amazing destinations, plan
-            unforgettable trips, and make every journey easier.
+            TravelBoost helps you discover amazing
+            destinations, plan unforgettable trips,
+            and make every journey easier.
           </p>
 
           <div className="hero-buttons">
+
             <button
+              type="button"
               className="primary-btn"
-              onClick={() => scrollToSection("destinations")}
+              onClick={() =>
+                scrollToSection("destinations")
+              }
             >
               Start Exploring →
             </button>
 
             <button
+              type="button"
               className="secondary-btn"
-              onClick={() => scrollToSection("about")}
+              onClick={() =>
+                scrollToSection("about")
+              }
             >
               Learn More
             </button>
+
           </div>
         </div>
 
         {/* HERO VISUAL */}
+
         <div className="hero-card">
 
           <button
             type="button"
             className="floating-card card-one clickable"
-            onClick={() => scrollToSection("destinations")}
+            onClick={() =>
+              scrollToSection("destinations")
+            }
           >
             📍
-            <span>Explore Places</span>
+
+            <span>
+              Explore Places
+            </span>
           </button>
 
           <div className="globe">
@@ -368,52 +615,72 @@ function App() {
           <button
             type="button"
             className="floating-card card-two clickable"
-            onClick={() => scrollToSection("about")}
+            onClick={() =>
+              scrollToSection("about")
+            }
           >
             ✈
-            <span>Plan Trips</span>
+
+            <span>
+              Plan Trips
+            </span>
           </button>
 
         </div>
       </main>
 
       {/* POPULAR DESTINATIONS */}
+
       <section
         id="destinations"
         className="destinations"
       >
         <div className="section-heading">
-          <p>EXPLORE INDIA</p>
 
-          <h2>Popular Destinations</h2>
+          <p>
+            EXPLORE INDIA
+          </p>
+
+          <h2>
+            Popular Destinations
+          </h2>
 
           <span>
-            Discover places worth adding to your next adventure.
+            Discover places worth adding to your next
+            adventure.
           </span>
+
         </div>
 
         <div className="destination-grid">
 
           {destinations.map((destination) => (
             <button
+              type="button"
               key={destination.id}
               className="destination-card"
-              onClick={() => openDestination(destination)}
+              onClick={() =>
+                openDestination(destination)
+              }
               style={{
                 backgroundImage: `linear-gradient(
                   to bottom,
                   rgba(7, 19, 33, 0.05) 20%,
                   rgba(7, 19, 33, 0.95) 100%
-                ), url(${destination.image})`,
+                ), url("${destination.image}")`,
               }}
               aria-label={`Explore ${destination.name}`}
             >
               <div className="destination-overlay">
 
                 <div>
-                  <h3>{destination.name}</h3>
+                  <h3>
+                    {destination.name}
+                  </h3>
 
-                  <p>{destination.location}</p>
+                  <p>
+                    {destination.location}
+                  </p>
                 </div>
 
                 <span className="destination-btn">
@@ -428,71 +695,96 @@ function App() {
       </section>
 
       {/* FEATURES SECTION */}
+
       <section
         id="about"
         className="features"
       >
 
         <button
+          type="button"
           className="feature clickable"
-          onClick={() => scrollToSection("destinations")}
+          onClick={() =>
+            scrollToSection("destinations")
+          }
         >
           <div className="feature-icon">
             🗺️
           </div>
 
-          <h3>Discover</h3>
+          <h3>
+            Discover
+          </h3>
 
           <p>
-            Find amazing destinations and hidden gems.
+            Find amazing destinations and hidden
+            gems.
           </p>
         </button>
 
         <button
+          type="button"
           className="feature clickable"
-          onClick={() => alert("Trip planning tools coming soon!")}
+          onClick={() =>
+            alert(
+              "Trip planning tools coming soon!"
+            )
+          }
         >
           <div className="feature-icon">
             📅
           </div>
 
-          <h3>Plan</h3>
+          <h3>
+            Plan
+          </h3>
 
           <p>
-            Create your perfect travel itinerary effortlessly.
+            Create your perfect travel itinerary
+            effortlessly.
           </p>
         </button>
 
         <button
+          type="button"
           className="feature clickable"
-          onClick={() => scrollToSection("destinations")}
+          onClick={() =>
+            scrollToSection("destinations")
+          }
         >
           <div className="feature-icon">
             🚀
           </div>
 
-          <h3>Experience</h3>
+          <h3>
+            Experience
+          </h3>
 
           <p>
-            Make unforgettable memories wherever you go.
+            Make unforgettable memories wherever
+            you go.
           </p>
         </button>
 
       </section>
 
       {/* FOOTER */}
+
       <footer className="footer">
+
         <div className="footer-logo">
           Travel<span>Boost</span>
         </div>
 
         <p>
-          Discover more. Travel better. Create unforgettable memories.
+          Discover more. Travel better. Create
+          unforgettable memories.
         </p>
 
         <p className="footer-copy">
           © 2026 TravelBoost. Built for explorers.
         </p>
+
       </footer>
 
     </div>
