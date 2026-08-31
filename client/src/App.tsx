@@ -1,4 +1,13 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
+import {
+  signInWithEmailAndPassword,
+  signInWithPopup,
+} from "firebase/auth";
+import {
+  auth,
+  googleProvider,
+  appleProvider,
+} from "./firebase";
 import "./App.css";
 
 type Destination = {
@@ -92,9 +101,25 @@ function App() {
 
   const [showLogin, setShowLogin] = useState(false);
 
+  /* =========================================================
+     USER LOGIN STATE
+  ========================================================= */
+
+  const [showUserLogin, setShowUserLogin] =
+    useState(false);
+
+  const [userEmail, setUserEmail] = useState("");
+  const [userPassword, setUserPassword] =
+    useState("");
+
+  /* =========================================================
+     NAVIGATION
+  ========================================================= */
+
   const scrollToSection = (id: string) => {
     setSelectedDestination(null);
     setShowLogin(false);
+    setShowUserLogin(false);
 
     setTimeout(() => {
       document.getElementById(id)?.scrollIntoView({
@@ -103,9 +128,12 @@ function App() {
     }, 100);
   };
 
-  const openDestination = (destination: Destination) => {
+  const openDestination = (
+    destination: Destination
+  ) => {
     setSelectedDestination(destination);
     setShowLogin(false);
+    setShowUserLogin(false);
 
     window.scrollTo({
       top: 0,
@@ -117,14 +145,17 @@ function App() {
     setSelectedDestination(null);
 
     setTimeout(() => {
-      document.getElementById("destinations")?.scrollIntoView({
-        behavior: "smooth",
-      });
+      document
+        .getElementById("destinations")
+        ?.scrollIntoView({
+          behavior: "smooth",
+        });
     }, 100);
   };
 
   const openLogin = () => {
     setSelectedDestination(null);
+    setShowUserLogin(false);
     setShowLogin(true);
 
     window.scrollTo({
@@ -135,6 +166,7 @@ function App() {
 
   const closeLogin = () => {
     setShowLogin(false);
+    setShowUserLogin(false);
 
     setTimeout(() => {
       document.getElementById("home")?.scrollIntoView({
@@ -143,9 +175,457 @@ function App() {
     }, 100);
   };
 
-  /*
-    LOGIN ROLE SELECTION PAGE
-  */
+  /* =========================================================
+     OPEN USER LOGIN
+  ========================================================= */
+
+  const openUserLogin = () => {
+    setShowUserLogin(true);
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  };
+
+  /* =========================================================
+     BACK TO ROLE SELECTION
+  ========================================================= */
+
+  const backToRoleSelection = () => {
+    setShowUserLogin(false);
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  };
+
+  /* =========================================================
+     EMAIL / PASSWORD LOGIN
+  ========================================================= */
+
+  const handleUserLogin = async (
+    event: FormEvent<HTMLFormElement>
+  ) => {
+    event.preventDefault();
+
+    if (!userEmail || !userPassword) {
+      alert(
+        "Please enter your email and password."
+      );
+      return;
+    }
+
+    try {
+      const result =
+        await signInWithEmailAndPassword(
+          auth,
+          userEmail,
+          userPassword
+        );
+
+      const user = result.user;
+
+      alert(
+        `Welcome back to TravelBoost!\nLogged in as ${
+          user.email || userEmail
+        }`
+      );
+
+      console.log(
+        "Firebase user:",
+        user
+      );
+    } catch (error) {
+      console.error(
+        "Email login error:",
+        error
+      );
+
+      const errorCode =
+        (
+          error as {
+            code?: string;
+          }
+        )?.code;
+
+      if (
+        errorCode ===
+        "auth/invalid-credential"
+      ) {
+        alert(
+          "Invalid email or password."
+        );
+      } else if (
+        errorCode ===
+        "auth/user-not-found"
+      ) {
+        alert(
+          "No account was found with this email."
+        );
+      } else if (
+        errorCode ===
+        "auth/wrong-password"
+      ) {
+        alert(
+          "Incorrect password."
+        );
+      } else if (
+        errorCode ===
+        "auth/invalid-email"
+      ) {
+        alert(
+          "Please enter a valid email address."
+        );
+      } else {
+        alert(
+          "Login failed. Please try again."
+        );
+      }
+    }
+  };
+
+  /* =========================================================
+     GOOGLE LOGIN
+  ========================================================= */
+
+  const handleGoogleLogin =
+    async () => {
+      try {
+        const result =
+          await signInWithPopup(
+            auth,
+            googleProvider
+          );
+
+        const user = result.user;
+
+        alert(
+          `Welcome to TravelBoost, ${
+            user.displayName ||
+            user.email ||
+            "Traveller"
+          }!`
+        );
+
+        console.log(
+          "Google user:",
+          user
+        );
+      } catch (error) {
+        console.error(
+          "Google login error:",
+          error
+        );
+
+        const errorCode =
+          (
+            error as {
+              code?: string;
+            }
+          )?.code;
+
+        if (
+          errorCode ===
+          "auth/popup-closed-by-user"
+        ) {
+          return;
+        }
+
+        if (
+          errorCode ===
+          "auth/popup-blocked"
+        ) {
+          alert(
+            "The Google login popup was blocked by your browser. Please allow popups for this site and try again."
+          );
+          return;
+        }
+
+        if (
+          errorCode ===
+          "auth/cancelled-popup-request"
+        ) {
+          return;
+        }
+
+        alert(
+          "Google login failed. Please try again."
+        );
+      }
+    };
+
+  /* =========================================================
+     APPLE LOGIN
+  ========================================================= */
+
+  const handleAppleLogin =
+    async () => {
+      try {
+        const result =
+          await signInWithPopup(
+            auth,
+            appleProvider
+          );
+
+        const user = result.user;
+
+        alert(
+          `Welcome to TravelBoost, ${
+            user.displayName ||
+            user.email ||
+            "Traveller"
+          }!`
+        );
+
+        console.log(
+          "Apple user:",
+          user
+        );
+      } catch (error) {
+        console.error(
+          "Apple login error:",
+          error
+        );
+
+        const errorCode =
+          (
+            error as {
+              code?: string;
+            }
+          )?.code;
+
+        if (
+          errorCode ===
+          "auth/popup-closed-by-user"
+        ) {
+          return;
+        }
+
+        if (
+          errorCode ===
+          "auth/popup-blocked"
+        ) {
+          alert(
+            "The Apple login popup was blocked by your browser. Please allow popups for this site and try again."
+          );
+          return;
+        }
+
+        if (
+          errorCode ===
+          "auth/cancelled-popup-request"
+        ) {
+          return;
+        }
+
+        alert(
+          "Apple login could not be completed. Please check the Apple provider configuration in Firebase."
+        );
+      }
+    };
+
+  /* =========================================================
+     USER LOGIN PAGE
+  ========================================================= */
+
+  if (showUserLogin) {
+    return (
+      <div className="app login-page user-login-page">
+        <div className="background-glow glow-one" />
+        <div className="background-glow glow-two" />
+
+        {/* USER LOGIN NAVBAR */}
+
+        <nav className="navbar login-navbar">
+          <button
+            type="button"
+            className="logo logo-button"
+            onClick={closeLogin}
+            aria-label="Back to TravelBoost home"
+          >
+            Travel<span>Boost</span>
+          </button>
+
+          <button
+            type="button"
+            className="login-back-button"
+            onClick={backToRoleSelection}
+          >
+            ← Back
+          </button>
+        </nav>
+
+        {/* USER LOGIN CONTENT */}
+
+        <main className="user-login-content">
+          <div className="user-login-heading">
+            <div className="user-login-icon">
+              👤
+            </div>
+
+            <p className="tag">
+              FOR TRAVELLERS
+            </p>
+
+            <h1>
+              Welcome back to{" "}
+              <span>TravelBoost.</span>
+            </h1>
+
+            <p>
+              Sign in to continue your journey.
+            </p>
+          </div>
+
+          <form
+            className="user-login-card"
+            onSubmit={handleUserLogin}
+          >
+            <div className="login-input-group">
+              <label htmlFor="user-email">
+                Email Address
+              </label>
+
+              <input
+                id="user-email"
+                type="email"
+                placeholder="you@example.com"
+                value={userEmail}
+                onChange={(event) =>
+                  setUserEmail(
+                    event.target.value
+                  )
+                }
+                autoComplete="email"
+              />
+            </div>
+
+            <div className="login-input-group">
+              <label htmlFor="user-password">
+                Password
+              </label>
+
+              <input
+                id="user-password"
+                type="password"
+                placeholder="Enter your password"
+                value={userPassword}
+                onChange={(event) =>
+                  setUserPassword(
+                    event.target.value
+                  )
+                }
+                autoComplete="current-password"
+              />
+            </div>
+
+            <div className="login-form-options">
+              <label className="remember-option">
+                <input
+                  type="checkbox"
+                  defaultChecked
+                />
+
+                <span>
+                  Remember me
+                </span>
+              </label>
+
+              <button
+                type="button"
+                className="forgot-password"
+                onClick={() =>
+                  alert(
+                    "Password recovery will be available soon."
+                  )
+                }
+              >
+                Forgot password?
+              </button>
+            </div>
+
+            <button
+              type="submit"
+              className="primary-btn user-login-submit"
+            >
+              Sign In →
+            </button>
+
+            <div className="login-divider">
+              <span>OR</span>
+            </div>
+
+            {/* GOOGLE LOGIN */}
+
+            <button
+              type="button"
+              className="social-login-btn google-login-btn"
+              onClick={handleGoogleLogin}
+            >
+              <span className="social-login-icon">
+                G
+              </span>
+
+              <span>
+                Continue with Google
+              </span>
+            </button>
+
+            {/* APPLE LOGIN */}
+
+            <button
+              type="button"
+              className="social-login-btn apple-login-btn"
+              onClick={handleAppleLogin}
+            >
+              <span className="social-login-icon">
+                
+              </span>
+
+              <span>
+                Continue with Apple
+              </span>
+            </button>
+
+            {/* GUEST LOGIN */}
+
+            <button
+              type="button"
+              className="secondary-btn guest-login-btn"
+              onClick={() =>
+                alert(
+                  "Guest exploration will be available soon."
+                )
+              }
+            >
+              Continue as Guest
+            </button>
+
+            <p className="login-register-text">
+              New to TravelBoost?{" "}
+              <button
+                type="button"
+                onClick={() =>
+                  alert(
+                    "Account registration will be available soon."
+                  )
+                }
+              >
+                Create an account
+              </button>
+            </p>
+          </form>
+        </main>
+      </div>
+    );
+  }
+
+  /* =========================================================
+     LOGIN ROLE SELECTION PAGE
+  ========================================================= */
+
   if (showLogin) {
     return (
       <div className="app login-page">
@@ -182,7 +662,8 @@ function App() {
             </p>
 
             <h1>
-              Welcome to <span>TravelBoost.</span>
+              Welcome to{" "}
+              <span>TravelBoost.</span>
             </h1>
 
             <p>
@@ -197,9 +678,7 @@ function App() {
             <button
               type="button"
               className="login-role-card"
-              onClick={() =>
-                alert("User Login coming next!")
-              }
+              onClick={openUserLogin}
             >
               <div className="login-role-icon">
                 👤
@@ -213,8 +692,9 @@ function App() {
                 <h2>User Login</h2>
 
                 <p>
-                  Discover destinations, plan trips,
-                  check crowds, and explore local experiences.
+                  Discover destinations, plan
+                  trips, check crowds, and
+                  explore local experiences.
                 </p>
               </div>
 
@@ -229,7 +709,9 @@ function App() {
               type="button"
               className="login-role-card"
               onClick={() =>
-                alert("Local Login coming next!")
+                alert(
+                  "Local Login coming next!"
+                )
               }
             >
               <div className="login-role-icon">
@@ -244,8 +726,9 @@ function App() {
                 <h2>Local Login</h2>
 
                 <p>
-                  Manage your homestay, guide profile,
-                  local services, and traveller requests.
+                  Manage your homestay, guide
+                  profile, local services, and
+                  traveller requests.
                 </p>
               </div>
 
@@ -260,7 +743,9 @@ function App() {
               type="button"
               className="login-role-card"
               onClick={() =>
-                alert("Authority Login coming next!")
+                alert(
+                  "Authority Login coming next!"
+                )
               }
             >
               <div className="login-role-icon">
@@ -275,8 +760,9 @@ function App() {
                 <h2>Authority Login</h2>
 
                 <p>
-                  Monitor crowds, manage complaints,
-                  and oversee tourism and public safety.
+                  Monitor crowds, manage
+                  complaints, and oversee
+                  tourism and public safety.
                 </p>
               </div>
 
@@ -291,9 +777,9 @@ function App() {
     );
   }
 
-  /*
-    DESTINATION DETAILS PAGE
-  */
+  /* =========================================================
+     DESTINATION DETAILS PAGE
+  ========================================================= */
 
   if (selectedDestination) {
     return (
@@ -302,7 +788,9 @@ function App() {
           <button
             type="button"
             className="logo logo-button"
-            onClick={() => scrollToSection("home")}
+            onClick={() =>
+              scrollToSection("home")
+            }
           >
             Travel<span>Boost</span>
           </button>
@@ -350,10 +838,15 @@ function App() {
                 ✈ EXPLORE • DISCOVER • EXPERIENCE
               </p>
 
-              <h1>{selectedDestination.name}</h1>
+              <h1>
+                {selectedDestination.name}
+              </h1>
 
               <p className="destination-location">
-                📍 {selectedDestination.location}
+                📍{" "}
+                {
+                  selectedDestination.location
+                }
               </p>
             </div>
           </div>
@@ -366,11 +859,15 @@ function App() {
 
               <h2>
                 Discover the beauty of{" "}
-                {selectedDestination.name}
+                {
+                  selectedDestination.name
+                }
               </h2>
 
               <p className="destination-description">
-                {selectedDestination.description}
+                {
+                  selectedDestination.description
+                }
               </p>
 
               <div className="destination-stats">
@@ -384,7 +881,9 @@ function App() {
                     <p>Best Time</p>
 
                     <strong>
-                      {selectedDestination.bestTime}
+                      {
+                        selectedDestination.bestTime
+                      }
                     </strong>
                   </div>
                 </div>
@@ -395,10 +894,14 @@ function App() {
                   </span>
 
                   <div>
-                    <p>Recommended Stay</p>
+                    <p>
+                      Recommended Stay
+                    </p>
 
                     <strong>
-                      {selectedDestination.duration}
+                      {
+                        selectedDestination.duration
+                      }
                     </strong>
                   </div>
                 </div>
@@ -409,7 +912,9 @@ function App() {
                   </span>
 
                   <div>
-                    <p>TravelBoost Pick</p>
+                    <p>
+                      TravelBoost Pick
+                    </p>
 
                     <strong>
                       Highly Recommended
@@ -437,13 +942,14 @@ function App() {
                       key={highlight}
                     >
                       <span>
-                        {String(index + 1).padStart(
-                          2,
-                          "0"
-                        )}
+                        {String(
+                          index + 1
+                        ).padStart(2, "0")}
                       </span>
 
-                      <h3>{highlight}</h3>
+                      <h3>
+                        {highlight}
+                      </h3>
                     </div>
                   )
                 )}
@@ -458,12 +964,15 @@ function App() {
 
                 <h2>
                   Start planning your{" "}
-                  {selectedDestination.name} trip
+                  {
+                    selectedDestination.name
+                  } trip
                 </h2>
 
                 <p>
-                  Discover attractions, create your
-                  itinerary, and make your journey
+                  Discover attractions,
+                  create your itinerary,
+                  and make your journey
                   unforgettable.
                 </p>
               </div>
@@ -486,9 +995,9 @@ function App() {
     );
   }
 
-  /*
-    MAIN WEBSITE
-  */
+  /* =========================================================
+     MAIN WEBSITE
+  ========================================================= */
 
   return (
     <div className="app">
@@ -499,7 +1008,9 @@ function App() {
         <button
           type="button"
           className="logo logo-button"
-          onClick={() => scrollToSection("home")}
+          onClick={() =>
+            scrollToSection("home")
+          }
           aria-label="Go to home"
         >
           Travel<span>Boost</span>
@@ -508,7 +1019,9 @@ function App() {
         <div className="nav-links">
           <button
             type="button"
-            onClick={() => scrollToSection("home")}
+            onClick={() =>
+              scrollToSection("home")
+            }
           >
             Home
           </button>
@@ -516,7 +1029,9 @@ function App() {
           <button
             type="button"
             onClick={() =>
-              scrollToSection("destinations")
+              scrollToSection(
+                "destinations"
+              )
             }
           >
             Explore
@@ -560,9 +1075,10 @@ function App() {
           </h1>
 
           <p className="description">
-            TravelBoost helps you discover amazing
-            destinations, plan unforgettable trips,
-            and make every journey easier.
+            TravelBoost helps you discover
+            amazing destinations, plan
+            unforgettable trips, and make
+            every journey easier.
           </p>
 
           <div className="hero-buttons">
@@ -571,7 +1087,9 @@ function App() {
               type="button"
               className="primary-btn"
               onClick={() =>
-                scrollToSection("destinations")
+                scrollToSection(
+                  "destinations"
+                )
               }
             >
               Start Exploring →
@@ -598,7 +1116,9 @@ function App() {
             type="button"
             className="floating-card card-one clickable"
             onClick={() =>
-              scrollToSection("destinations")
+              scrollToSection(
+                "destinations"
+              )
             }
           >
             📍
@@ -646,50 +1166,56 @@ function App() {
           </h2>
 
           <span>
-            Discover places worth adding to your next
-            adventure.
+            Discover places worth adding
+            to your next adventure.
           </span>
 
         </div>
 
         <div className="destination-grid">
 
-          {destinations.map((destination) => (
-            <button
-              type="button"
-              key={destination.id}
-              className="destination-card"
-              onClick={() =>
-                openDestination(destination)
-              }
-              style={{
-                backgroundImage: `linear-gradient(
-                  to bottom,
-                  rgba(7, 19, 33, 0.05) 20%,
-                  rgba(7, 19, 33, 0.95) 100%
-                ), url("${destination.image}")`,
-              }}
-              aria-label={`Explore ${destination.name}`}
-            >
-              <div className="destination-overlay">
+          {destinations.map(
+            (destination) => (
+              <button
+                type="button"
+                key={destination.id}
+                className="destination-card"
+                onClick={() =>
+                  openDestination(
+                    destination
+                  )
+                }
+                style={{
+                  backgroundImage: `linear-gradient(
+                    to bottom,
+                    rgba(7, 19, 33, 0.05) 20%,
+                    rgba(7, 19, 33, 0.95) 100%
+                  ), url("${destination.image}")`,
+                }}
+                aria-label={`Explore ${destination.name}`}
+              >
+                <div className="destination-overlay">
 
-                <div>
-                  <h3>
-                    {destination.name}
-                  </h3>
+                  <div>
+                    <h3>
+                      {destination.name}
+                    </h3>
 
-                  <p>
-                    {destination.location}
-                  </p>
+                    <p>
+                      {
+                        destination.location
+                      }
+                    </p>
+                  </div>
+
+                  <span className="destination-btn">
+                    →
+                  </span>
+
                 </div>
-
-                <span className="destination-btn">
-                  →
-                </span>
-
-              </div>
-            </button>
-          ))}
+              </button>
+            )
+          )}
 
         </div>
       </section>
@@ -705,7 +1231,9 @@ function App() {
           type="button"
           className="feature clickable"
           onClick={() =>
-            scrollToSection("destinations")
+            scrollToSection(
+              "destinations"
+            )
           }
         >
           <div className="feature-icon">
@@ -717,8 +1245,8 @@ function App() {
           </h3>
 
           <p>
-            Find amazing destinations and hidden
-            gems.
+            Find amazing destinations and
+            hidden gems.
           </p>
         </button>
 
@@ -740,8 +1268,8 @@ function App() {
           </h3>
 
           <p>
-            Create your perfect travel itinerary
-            effortlessly.
+            Create your perfect travel
+            itinerary effortlessly.
           </p>
         </button>
 
@@ -749,7 +1277,9 @@ function App() {
           type="button"
           className="feature clickable"
           onClick={() =>
-            scrollToSection("destinations")
+            scrollToSection(
+              "destinations"
+            )
           }
         >
           <div className="feature-icon">
@@ -761,8 +1291,8 @@ function App() {
           </h3>
 
           <p>
-            Make unforgettable memories wherever
-            you go.
+            Make unforgettable memories
+            wherever you go.
           </p>
         </button>
 
@@ -777,12 +1307,13 @@ function App() {
         </div>
 
         <p>
-          Discover more. Travel better. Create
-          unforgettable memories.
+          Discover more. Travel better.
+          Create unforgettable memories.
         </p>
 
         <p className="footer-copy">
-          © 2026 TravelBoost. Built for explorers.
+          © 2026 TravelBoost. Built for
+          explorers.
         </p>
 
       </footer>
