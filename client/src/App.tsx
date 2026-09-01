@@ -1,4 +1,9 @@
-import { useState, type FormEvent } from "react";
+import {
+  useState,
+  useEffect,
+  type FormEvent,
+  type KeyboardEvent,
+} from "react";
 import {
   signInWithEmailAndPassword,
   signInWithPopup,
@@ -157,6 +162,19 @@ function App() {
   const [selectedLocation, setSelectedLocation] =
     useState("Shaniwar Wada, Pune");
 
+  /* =========================================================
+     ADDED: SEARCHABLE LOCATION
+  ========================================================= */
+
+  const [locationQuery, setLocationQuery] =
+    useState("Shaniwar Wada, Pune");
+
+  const [isSearchingLocation, setIsSearchingLocation] =
+    useState(false);
+
+  const [locationSearchMessage, setLocationSearchMessage] =
+    useState("");
+
   const [userBudget, setUserBudget] =
     useState("₹10,000");
 
@@ -165,6 +183,106 @@ function App() {
 
   const [peopleCount] =
     useState(1240);
+
+  /* =========================================================
+     ADDED: TRAFFIC LEVEL
+  ========================================================= */
+
+  const trafficLevel =
+    selectedLocation === "Shaniwar Wada, Pune"
+      ? "High"
+      : selectedLocation === "Aga Khan Palace, Pune"
+      ? "Moderate"
+      : selectedLocation === "Lal Mahal, Pune"
+      ? "Low"
+      : "Moderate";
+
+  const trafficIcon =
+    trafficLevel === "High"
+      ? "🔴"
+      : trafficLevel === "Moderate"
+      ? "🟡"
+      : "🟢";
+
+  /* =========================================================
+     ADDED: SEARCH / SELECT LOCATION
+  ========================================================= */
+
+  const searchLocation = async () => {
+    const query = locationQuery.trim();
+
+    if (!query) {
+      setLocationSearchMessage(
+        "Please enter a location first."
+      );
+      return;
+    }
+
+    setIsSearchingLocation(true);
+    setLocationSearchMessage("");
+
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&addressdetails=1&q=${encodeURIComponent(
+          query
+        )}`,
+        {
+          headers: {
+            Accept: "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          "Location service is unavailable."
+        );
+      }
+
+      const results = (await response.json()) as Array<{
+        display_name?: string;
+      }>;
+
+      if (
+        !results.length ||
+        !results[0].display_name
+      ) {
+        setLocationSearchMessage(
+          "Location not found. Try a more specific place."
+        );
+        return;
+      }
+
+      const placeName =
+        results[0].display_name;
+
+      setSelectedLocation(placeName);
+      setLocationQuery(placeName);
+      setLocationSearchMessage(
+        "Location updated successfully."
+      );
+    } catch (error) {
+      console.error(
+        "Location search error:",
+        error
+      );
+
+      setLocationSearchMessage(
+        "Unable to search right now. Please try again."
+      );
+    } finally {
+      setIsSearchingLocation(false);
+    }
+  };
+
+  const handleLocationKeyDown = (
+    event: KeyboardEvent<HTMLInputElement>
+  ) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void searchLocation();
+    }
+  };
 
   /* =========================================================
      ADDED: LOCAL PROVIDER DASHBOARD STATE
@@ -200,6 +318,60 @@ function App() {
   const [userEmail, setUserEmail] = useState("");
   const [userPassword, setUserPassword] =
     useState("");
+
+  /* =========================================================
+     ADDED: SCROLL REVEAL (presentation only)
+     Adds `.is-visible` to `.reveal` containers as they enter
+     the viewport so children can stagger in. Respects the
+     reduced-motion preference (handled in CSS) and falls back
+     to showing content immediately when the API is missing.
+  ========================================================= */
+
+  useEffect(() => {
+    const targets = Array.from(
+      document.querySelectorAll<HTMLElement>(".reveal")
+    );
+
+    if (!targets.length) return;
+
+    if (typeof IntersectionObserver === "undefined") {
+      targets.forEach((node) =>
+        node.classList.add("is-visible")
+      );
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("is-visible");
+            observer.unobserve(entry.target);
+          }
+        });
+      },
+      {
+        threshold: 0.12,
+        rootMargin: "0px 0px -6% 0px",
+      }
+    );
+
+    targets.forEach((node) => observer.observe(node));
+
+    return () => observer.disconnect();
+  }, [
+    selectedDestination,
+    showLogin,
+    showUserLogin,
+    showLocalLogin,
+    showAuthorityLogin,
+    showAuthorityDashboard,
+    showUserDashboard,
+    showLocalDashboard,
+    dashboardSection,
+    localDashboardSection,
+    authorityDashboardSection,
+  ]);
 
   /* =========================================================
      NAVIGATION
@@ -748,7 +920,7 @@ function App() {
 
           {authorityDashboardSection === "overview" && (
             <>
-              <div className="dashboard-grid">
+              <div className="dashboard-grid reveal">
                 <div className="dashboard-card dashboard-card-wide">
                   <span className="dashboard-card-icon">👥</span>
                   <div>
@@ -786,7 +958,7 @@ function App() {
                 </div>
               </div>
 
-              <div className="dashboard-card ai-recommendation-card">
+              <div className="dashboard-card ai-recommendation-card reveal">
                 <div className="ai-card-header">
                   <span className="dashboard-card-icon">📊</span>
 
@@ -814,7 +986,7 @@ function App() {
                 </div>
               </div>
 
-              <div className="dashboard-feature-panel">
+              <div className="dashboard-feature-panel reveal">
                 <div className="dashboard-feature-card">
                   <span className="dashboard-card-icon">👥</span>
                   <h2>Monitor Crowds</h2>
@@ -857,7 +1029,7 @@ function App() {
           )}
 
           {authorityDashboardSection === "crowd" && (
-            <div className="dashboard-feature-panel">
+            <div className="dashboard-feature-panel reveal">
               {[
                 {
                   icon: "🔴",
@@ -945,7 +1117,7 @@ function App() {
           )}
 
           {authorityDashboardSection === "complaints" && (
-            <div className="dashboard-feature-panel">
+            <div className="dashboard-feature-panel reveal">
               <div className="dashboard-card">
                 <p>🚨 Priority Complaint</p>
 
@@ -1023,7 +1195,7 @@ function App() {
           )}
 
           {authorityDashboardSection === "safety" && (
-            <div className="dashboard-feature-panel">
+            <div className="dashboard-feature-panel reveal">
               <div className="dashboard-card emergency-alert-card">
                 <p>⚠️ ACTIVE SAFETY ALERT</p>
 
@@ -1091,7 +1263,7 @@ function App() {
           )}
 
           {authorityDashboardSection === "reports" && (
-            <div className="dashboard-feature-panel">
+            <div className="dashboard-feature-panel reveal">
               <div className="dashboard-card">
                 <p>📈 Tourism Trends</p>
                 <h2>Weekly Visitor Overview</h2>
@@ -1589,7 +1761,7 @@ function App() {
 
           {dashboardSection === "overview" && (
             <>
-              <div className="dashboard-grid">
+              <div className="dashboard-grid reveal">
 
                 <div className="dashboard-card dashboard-card-wide">
                   <span className="dashboard-card-icon">
@@ -1599,27 +1771,53 @@ function App() {
                   <div>
                     <p>Location</p>
 
-                    <select
-                      value={selectedLocation}
-                      onChange={(event) =>
-                        setSelectedLocation(
-                          event.target.value
-                        )
-                      }
-                    >
-                      <option>
-                        Shaniwar Wada, Pune
-                      </option>
-                      <option>
-                        Aga Khan Palace, Pune
-                      </option>
-                      <option>
-                        Lal Mahal, Pune
-                      </option>
-                      <option>
-                        Sinhagad Fort, Pune
-                      </option>
-                    </select>
+                    <div className="location-search-wrap">
+                      <input
+                        type="text"
+                        value={locationQuery}
+                        onChange={(event) => {
+                          setLocationQuery(
+                            event.target.value
+                          );
+                          setLocationSearchMessage("");
+                        }}
+                        onKeyDown={
+                          handleLocationKeyDown
+                        }
+                        placeholder="Search any city, landmark, or place..."
+                        aria-label="Search for a location"
+                        autoComplete="off"
+                      />
+
+                      <button
+                        type="button"
+                        className="location-search-btn"
+                        onClick={() =>
+                          void searchLocation()
+                        }
+                        disabled={
+                          isSearchingLocation
+                        }
+                      >
+                        {isSearchingLocation
+                          ? "Searching..."
+                          : "Search"}
+                      </button>
+                    </div>
+
+                    {locationSearchMessage && (
+                      <small
+                        className={
+                          locationSearchMessage.includes(
+                            "successfully"
+                          )
+                            ? "location-search-success"
+                            : "location-search-message"
+                        }
+                      >
+                        {locationSearchMessage}
+                      </small>
+                    )}
                   </div>
                 </div>
 
@@ -1648,28 +1846,35 @@ function App() {
 
                 <div className="dashboard-card dashboard-card-wide">
                   <span className="dashboard-card-icon">
-                    👥
+                    🚦
                   </span>
 
                   <div>
-                    <p>Number of People</p>
+                    <p>Traffic Level</p>
 
-                    <strong>
-                      {peopleCount.toLocaleString()}
+                    <strong
+                      className={`traffic-badge traffic-${trafficLevel.toLowerCase()}`}
+                    >
+                      {trafficIcon} {trafficLevel}
                     </strong>
 
+                    <div
+                      className="traffic-meter"
+                      aria-hidden="true"
+                    >
+                      <span
+                        className={`meter-bar${trafficLevel === "Low" ? " on is-low" : ""}`}
+                      />
+                      <span
+                        className={`meter-bar${trafficLevel === "Moderate" ? " on is-moderate" : ""}`}
+                      />
+                      <span
+                        className={`meter-bar${trafficLevel === "High" ? " on is-high" : ""}`}
+                      />
+                    </div>
+
                     <small>
-                      <span className="crowd-low">
-                        🟢 Low
-                      </span>
-                      {" "}
-                      <span>
-                        🟡 Moderate
-                      </span>
-                      {" "}
-                      <span>
-                        🔴 High
-                      </span>
+                      Current traffic at {selectedLocation}
                     </small>
                   </div>
                 </div>
@@ -1763,7 +1968,7 @@ function App() {
 
               </div>
 
-              <div className="dashboard-card ai-recommendation-card">
+              <div className="dashboard-card ai-recommendation-card reveal">
                 <div className="ai-card-header">
                   <span className="dashboard-card-icon">
                     🤖
@@ -1822,7 +2027,7 @@ function App() {
           )}
 
           {dashboardSection === "connect" && (
-            <div className="dashboard-feature-panel">
+            <div className="dashboard-feature-panel reveal">
               <div className="dashboard-feature-card">
                 <span className="dashboard-card-icon">
                   🏠
@@ -1910,7 +2115,7 @@ function App() {
           )}
 
           {dashboardSection === "crowd" && (
-            <div className="dashboard-feature-panel">
+            <div className="dashboard-feature-panel reveal">
               <div className="dashboard-card crowd-search-card">
                 <div>
                   <p>
@@ -1945,7 +2150,7 @@ function App() {
                 </p>
 
                 <h2>
-                  📍 Shaniwar Wada, Pune
+                  📍 {selectedLocation}
                 </h2>
 
                 <div className="dashboard-stat-row">
@@ -1989,7 +2194,7 @@ function App() {
                 </div>
               </div>
 
-              <div className="dashboard-card ai-recommendation-card">
+              <div className="dashboard-card ai-recommendation-card reveal">
                 <div className="ai-card-header">
                   <span className="dashboard-card-icon">
                     🤖
@@ -2029,7 +2234,7 @@ function App() {
           )}
 
           {dashboardSection === "cleanliness" && (
-            <div className="dashboard-feature-panel">
+            <div className="dashboard-feature-panel reveal">
               <div className="dashboard-card">
                 <p>
                   🧹 Community Cleanliness
@@ -2119,7 +2324,7 @@ function App() {
           )}
 
           {dashboardSection === "emergency" && (
-            <div className="dashboard-feature-panel">
+            <div className="dashboard-feature-panel reveal">
               <div className="dashboard-card emergency-alert-card">
                 <p>
                   ⚠️ Location Warnings
@@ -2373,7 +2578,7 @@ function App() {
 
           {localDashboardSection ===
             "profile" && (
-            <div className="local-dashboard-grid">
+            <div className="local-dashboard-grid reveal">
               <div className="dashboard-card">
                 <span className="dashboard-card-icon">
                   👤
@@ -2499,7 +2704,7 @@ function App() {
 
           {localDashboardSection ===
             "details" && (
-            <div className="local-dashboard-grid">
+            <div className="local-dashboard-grid reveal">
               <div className="dashboard-card">
                 <span className="dashboard-card-icon">
                   💰
@@ -2620,7 +2825,7 @@ function App() {
 
           {localDashboardSection ===
             "requests" && (
-            <div className="local-request-list">
+            <div className="local-request-list reveal">
               <div className="dashboard-card">
                 <p>
                   NEW TRAVELLER REQUEST
@@ -2748,7 +2953,7 @@ function App() {
             "chats" &&
             providerType !==
               "Arts & Crafts" && (
-              <div className="local-request-list">
+              <div className="local-request-list reveal">
                 <div className="dashboard-card">
                   <p>
                     💬 ACTIVE CHAT
@@ -3261,8 +3466,7 @@ function App() {
               onClick={handleAppleLogin}
             >
               <span className="social-login-icon">
-                
-              </span>
+                 </span>
 
               <span>
                 Continue with Apple
@@ -3351,7 +3555,7 @@ function App() {
             </p>
           </div>
 
-          <div className="login-role-grid">
+          <div className="login-role-grid reveal">
 
             {/* USER LOGIN */}
 
@@ -3524,7 +3728,7 @@ function App() {
           </div>
 
           <section className="destination-info">
-            <div className="destination-main-info">
+            <div className="destination-main-info reveal">
               <p className="section-label">
                 ABOUT THIS DESTINATION
               </p>
@@ -3542,7 +3746,7 @@ function App() {
                 }
               </p>
 
-              <div className="destination-stats">
+              <div className="destination-stats reveal">
 
                 <div className="stat-card">
                   <span className="stat-icon">
@@ -3597,7 +3801,7 @@ function App() {
               </div>
             </div>
 
-            <div className="highlights-section">
+            <div className="highlights-section reveal">
               <p className="section-label">
                 TOP EXPERIENCES
               </p>
@@ -3606,7 +3810,7 @@ function App() {
                 Things you shouldn't miss
               </h2>
 
-              <div className="highlights-grid">
+              <div className="highlights-grid reveal">
                 {selectedDestination.highlights.map(
                   (highlight, index) => (
                     <div
@@ -3628,7 +3832,7 @@ function App() {
               </div>
             </div>
 
-            <div className="plan-trip-box">
+            <div className="plan-trip-box reveal">
               <div>
                 <p className="section-label">
                   READY TO EXPLORE?
@@ -3733,11 +3937,11 @@ function App() {
       <main id="home" className="hero">
 
         <div className="hero-content">
-          <p className="tag">
+          <p className="tag hero-tag">
             ✈ PLAN • EXPLORE • EXPERIENCE
           </p>
 
-          <h1>
+          <h1 className="hero-title">
             Discover the world.
             <br />
 
@@ -3746,14 +3950,14 @@ function App() {
             </span>
           </h1>
 
-          <p className="description">
+          <p className="description hero-description">
             TravelBoost helps you discover
             amazing destinations, plan
             unforgettable trips, and make
             every journey easier.
           </p>
 
-          <div className="hero-buttons">
+          <div className="hero-buttons hero-cta">
 
             <button
               type="button"
@@ -3783,6 +3987,13 @@ function App() {
         {/* HERO VISUAL */}
 
         <div className="hero-card">
+
+          <span className="hero-glow" aria-hidden="true" />
+          <span className="orbit orbit-a" aria-hidden="true" />
+          <span className="orbit orbit-b" aria-hidden="true" />
+          <span className="orbit-dot orbit-dot-a" aria-hidden="true" />
+          <span className="orbit-dot orbit-dot-b" aria-hidden="true" />
+          <span className="orbit-dot orbit-dot-c" aria-hidden="true" />
 
           <button
             type="button"
@@ -3827,7 +4038,7 @@ function App() {
         id="destinations"
         className="destinations"
       >
-        <div className="section-heading">
+        <div className="section-heading reveal">
 
           <p>
             EXPLORE INDIA
@@ -3844,7 +4055,7 @@ function App() {
 
         </div>
 
-        <div className="destination-grid">
+        <div className="destination-grid reveal">
 
           {destinations.map(
             (destination) => (
@@ -3896,7 +4107,7 @@ function App() {
 
       <section
         id="about"
-        className="features"
+        className="features reveal"
       >
 
         <button
@@ -3919,29 +4130,6 @@ function App() {
           <p>
             Find amazing destinations and
             hidden gems.
-          </p>
-        </button>
-
-        <button
-          type="button"
-          className="feature clickable"
-          onClick={() =>
-            alert(
-              "Trip planning tools coming soon!"
-            )
-          }
-        >
-          <div className="feature-icon">
-            📅
-          </div>
-
-          <h3>
-            Plan
-          </h3>
-
-          <p>
-            Create your perfect travel
-            itinerary effortlessly.
           </p>
         </button>
 
