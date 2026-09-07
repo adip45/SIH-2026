@@ -1,6 +1,7 @@
 import {
   useState,
   useEffect,
+  useRef,
   type FormEvent,
   type KeyboardEvent,
 } from "react";
@@ -13,6 +14,7 @@ import {
   googleProvider,
   appleProvider,
 } from "./firebase";
+import { ToastStack, type ToastItem } from "./Toast";
 import "./App.css";
 
 type Destination = {
@@ -100,11 +102,87 @@ const destinations: Destination[] = [
   },
 ];
 
+/* =========================================================
+   BRAND ICONS (vector replacements for the old text glyphs)
+========================================================= */
+
+const GoogleIcon = () => (
+  <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">
+    <path
+      fill="#4285F4"
+      d="M23.49 12.27c0-.79-.07-1.54-.19-2.27H12v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58v3h3.86c2.26-2.09 3.56-5.17 3.56-8.82z"
+    />
+    <path
+      fill="#34A853"
+      d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.86-3c-1.08.72-2.45 1.16-4.07 1.16-3.13 0-5.78-2.11-6.73-4.96H1.29v3.09C3.26 21.3 7.31 24 12 24z"
+    />
+    <path
+      fill="#FBBC05"
+      d="M5.27 14.29c-.25-.72-.38-1.49-.38-2.29s.14-1.57.38-2.29V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.98-3.09z"
+    />
+    <path
+      fill="#EA4335"
+      d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.98 3.09C6.22 6.86 8.87 4.75 12 4.75z"
+    />
+  </svg>
+);
+
+const AppleIcon = () => (
+  <svg
+    viewBox="0 0 24 24"
+    width="17"
+    height="17"
+    fill="currentColor"
+    aria-hidden="true"
+  >
+    <path d="M17.05 20.28c-.98.95-2.05.86-3.08.38-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.38C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8.98-.2 1.92-.86 3.03-.8 1.28.1 2.24.61 2.87 1.53-2.62 1.57-2.2 5.02.42 5.98-.6 1.58-1.38 3.15-2.4 4.46zM12.03 7.25c-.15-2.23 1.66-4.25 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z" />
+  </svg>
+);
+
 function App() {
   const [selectedDestination, setSelectedDestination] =
     useState<Destination | null>(null);
 
   const [showLogin, setShowLogin] = useState(false);
+
+  /* =========================================================
+     GLASS TOASTS (in-app notifications replacing alert())
+  ========================================================= */
+
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+
+  const toastIdRef = useRef(0);
+
+  const dismissToast = (id: number) => {
+    setToasts((current) =>
+      current.map((toast) =>
+        toast.id === id ? { ...toast, leaving: true } : toast
+      )
+    );
+
+    window.setTimeout(() => {
+      setToasts((current) =>
+        current.filter((toast) => toast.id !== id)
+      );
+    }, 320);
+  };
+
+  const notify = (
+    message: string,
+    variant: ToastItem["variant"] = "info"
+  ) => {
+    const id = ++toastIdRef.current;
+
+    setToasts((current) => [
+      ...current.slice(-3),
+      { id, message, variant },
+    ]);
+
+    window.setTimeout(
+      () => dismissToast(id),
+      variant === "error" ? 7500 : 4500
+    );
+  };
 
   /* =========================================================
      USER LOGIN STATE
@@ -295,7 +373,7 @@ function App() {
     useState("profile");
 
   const [providerName, setProviderName] =
-    useState("TravelBoost Local Partner");
+    useState("HostelConnect Local Partner");
 
   const [providerLocation, setProviderLocation] =
     useState("Pune, Maharashtra");
@@ -372,6 +450,108 @@ function App() {
     localDashboardSection,
     authorityDashboardSection,
   ]);
+
+  /* =========================================================
+     HERO POINTER PARALLAX (decorative, pointer-fine only)
+     Writes CSS variables consumed by App.css. Falls back to
+     a static layout for touch devices and reduced motion.
+  ========================================================= */
+
+  const heroRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches ||
+      !window.matchMedia("(pointer: fine)").matches
+    ) {
+      return;
+    }
+
+    let frame = 0;
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const hero = heroRef.current;
+
+      if (!hero || frame) {
+        return;
+      }
+
+      if (
+        !(event.target instanceof Node) ||
+        !hero.contains(event.target)
+      ) {
+        hero.style.setProperty("--parallax-x", "0");
+        hero.style.setProperty("--parallax-y", "0");
+        return;
+      }
+
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+
+        const target = heroRef.current;
+
+        if (!target) {
+          return;
+        }
+
+        const rect = target.getBoundingClientRect();
+
+        const x = Math.max(
+          -0.5,
+          Math.min(0.5, (event.clientX - rect.left) / rect.width - 0.5)
+        );
+
+        const y = Math.max(
+          -0.5,
+          Math.min(0.5, (event.clientY - rect.top) / rect.height - 0.5)
+        );
+
+        target.style.setProperty("--parallax-x", x.toFixed(3));
+        target.style.setProperty("--parallax-y", y.toFixed(3));
+      });
+    };
+
+    const handlePointerLeave = () => {
+      const hero = heroRef.current;
+
+      if (!hero) {
+        return;
+      }
+
+      hero.style.setProperty("--parallax-x", "0");
+      hero.style.setProperty("--parallax-y", "0");
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    document.addEventListener("pointerleave", handlePointerLeave);
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      document.removeEventListener("pointerleave", handlePointerLeave);
+
+      if (frame) {
+        window.cancelAnimationFrame(frame);
+      }
+    };
+  }, []);
+
+  /* =========================================================
+     DASHBOARD NAV — keep the active pill visible on mobile
+     (the segmented control scrolls horizontally on small
+     screens; this centers the active section after switching)
+  ========================================================= */
+
+  useEffect(() => {
+    const activeButton = document.querySelector(
+      ".dashboard-nav-btn.active"
+    );
+
+    activeButton?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "center",
+    });
+  }, [dashboardSection, localDashboardSection, authorityDashboardSection]);
 
   /* =========================================================
      NAVIGATION
@@ -518,8 +698,9 @@ function App() {
     event.preventDefault();
 
     if (!localEmail || !localPassword) {
-      alert(
-        "Please enter your email and password."
+      notify(
+        "Please enter your email and password.",
+        "error"
       );
       return;
     }
@@ -534,10 +715,11 @@ function App() {
 
       const user = result.user;
 
-      alert(
-        `Welcome back to TravelBoost!\nLogged in as ${
+      notify(
+        `Welcome back to HostelConnect!\nLogged in as ${
           user.email || localEmail
-        }`
+        }`,
+        "success"
       );
 
       console.log(
@@ -569,12 +751,13 @@ function App() {
           message?: string;
         })?.message;
 
-      alert(
+      notify(
         `Local Login Error:\n\nCode: ${
           errorCode || "unknown"
         }\n\nMessage: ${
           errorMessage || "Unknown error"
-        }`
+        }`,
+        "error"
       );
     }
   };
@@ -594,12 +777,13 @@ function App() {
 
         const user = result.user;
 
-        alert(
-          `Welcome to TravelBoost, ${
+        notify(
+          `Welcome to HostelConnect, ${
             user.displayName ||
             user.email ||
             "Local Provider"
-          }!`
+          }!`,
+          "success"
         );
 
         console.log(
@@ -631,12 +815,13 @@ function App() {
             message?: string;
           })?.message;
 
-        alert(
+        notify(
           `Local Google Login Error:\n\nCode: ${
             errorCode || "unknown"
           }\n\nMessage: ${
             errorMessage || "Unknown error"
-          }`
+          }`,
+          "error"
         );
       }
     };
@@ -682,8 +867,9 @@ function App() {
     event.preventDefault();
 
     if (!authorityEmail || !authorityPassword) {
-      alert(
-        "Please enter your official email and password."
+      notify(
+        "Please enter your official email and password.",
+        "error"
       );
       return;
     }
@@ -698,10 +884,11 @@ function App() {
 
       const user = result.user;
 
-      alert(
-        `Welcome to TravelBoost Authority Portal!\nLogged in as ${
+      notify(
+        `Welcome to HostelConnect Authority Portal!\nLogged in as ${
           user.email || authorityEmail
-        }`
+        }`,
+        "success"
       );
 
       console.log(
@@ -733,12 +920,13 @@ function App() {
           message?: string;
         })?.message;
 
-      alert(
+      notify(
         `Authority Login Error:\n\nCode: ${
           errorCode || "unknown"
         }\n\nMessage: ${
           errorMessage || "Unknown error"
-        }`
+        }`,
+        "error"
       );
     }
   };
@@ -758,12 +946,13 @@ function App() {
 
         const user = result.user;
 
-        alert(
-          `Welcome to the TravelBoost Authority Portal, ${
+        notify(
+          `Welcome to the HostelConnect Authority Portal, ${
             user.displayName ||
             user.email ||
             "Authority User"
-          }!`
+          }!`,
+          "success"
         );
 
         console.log(
@@ -795,12 +984,13 @@ function App() {
             message?: string;
           })?.message;
 
-        alert(
+        notify(
           `Authority Google Login Error:\n\nCode: ${
             errorCode || "unknown"
           }\n\nMessage: ${
             errorMessage || "Unknown error"
-          }`
+          }`,
+          "error"
         );
       }
     };
@@ -851,7 +1041,7 @@ function App() {
     return (
       <div
         className="app user-dashboard-page authority-dashboard-page"
-        aria-label="TravelBoost authority dashboard"
+        aria-label="HostelConnect authority dashboard"
       >
         <div className="background-glow glow-one" />
         <div className="background-glow glow-two" />
@@ -861,9 +1051,9 @@ function App() {
             type="button"
             className="logo logo-button"
             onClick={logoutAuthority}
-            aria-label="Back to TravelBoost home"
+            aria-label="Back to HostelConnect home"
           >
-            Travel<span>Boost</span>
+            Hostel<span>Connect</span>
           </button>
 
           <div className="dashboard-user-info">
@@ -907,7 +1097,7 @@ function App() {
 
           <section className="dashboard-heading">
             <p className="section-label">
-              TRAVELBOOST • AUTHORITY PORTAL
+              HOSTELCONNECT • AUTHORITY PORTAL
             </p>
 
             <h1>{authorityDashboardTitle}</h1>
@@ -1105,8 +1295,9 @@ function App() {
                   type="button"
                   className="primary-btn"
                   onClick={() =>
-                    alert(
-                      "Live crowd controls will be connected by the backend team."
+                    notify(
+                      "Live crowd controls will be connected by the backend team.",
+                      "info"
                     )
                   }
                 >
@@ -1145,8 +1336,9 @@ function App() {
                     type="button"
                     className="primary-btn"
                     onClick={() =>
-                      alert(
-                        "Complaint action will be connected to the backend next."
+                      notify(
+                        "Complaint action will be connected to the backend next.",
+                        "info"
                       )
                     }
                   >
@@ -1157,8 +1349,9 @@ function App() {
                     type="button"
                     className="secondary-btn"
                     onClick={() =>
-                      alert(
-                        "Complaint assignment will be connected to the backend next."
+                      notify(
+                        "Complaint assignment will be connected to the backend next.",
+                        "info"
                       )
                     }
                   >
@@ -1225,8 +1418,9 @@ function App() {
                   type="button"
                   className="primary-btn"
                   onClick={() =>
-                    alert(
-                      "Police coordination will be connected to the backend next."
+                    notify(
+                      "Police coordination will be connected to the backend next.",
+                      "info"
                     )
                   }
                 >
@@ -1251,8 +1445,9 @@ function App() {
                   type="button"
                   className="primary-btn"
                   onClick={() =>
-                    alert(
-                      "Emergency service coordination will be connected to the backend next."
+                    notify(
+                      "Emergency service coordination will be connected to the backend next.",
+                      "info"
                     )
                   }
                 >
@@ -1312,8 +1507,9 @@ function App() {
                   type="button"
                   className="secondary-btn"
                   onClick={() =>
-                    alert(
-                      "Report export will be connected to backend analytics next."
+                    notify(
+                      "Report export will be connected to backend analytics next.",
+                      "info"
                     )
                   }
                 >
@@ -1331,6 +1527,8 @@ function App() {
           <span>🚨 Safety</span>
           <span>📊 Reports</span>
         </footer>
+
+        <ToastStack toasts={toasts} onDismiss={dismissToast} />
       </div>
     );
   }
@@ -1371,8 +1569,9 @@ function App() {
     event.preventDefault();
 
     if (!userEmail || !userPassword) {
-      alert(
-        "Please enter your email and password."
+      notify(
+        "Please enter your email and password.",
+        "error"
       );
       return;
     }
@@ -1387,10 +1586,11 @@ function App() {
 
       const user = result.user;
 
-      alert(
-        `Welcome back to TravelBoost!\nLogged in as ${
+      notify(
+        `Welcome back to HostelConnect!\nLogged in as ${
           user.email || userEmail
-        }`
+        }`,
+        "success"
       );
 
       console.log(
@@ -1423,33 +1623,38 @@ function App() {
         errorCode ===
         "auth/invalid-credential"
       ) {
-        alert(
-          "Invalid email or password."
+        notify(
+          "Invalid email or password.",
+          "error"
         );
       } else if (
         errorCode ===
         "auth/user-not-found"
       ) {
-        alert(
-          "No account was found with this email."
+        notify(
+          "No account was found with this email.",
+          "error"
         );
       } else if (
         errorCode ===
         "auth/wrong-password"
       ) {
-        alert(
-          "Incorrect password."
+        notify(
+          "Incorrect password.",
+          "error"
         );
       } else if (
         errorCode ===
         "auth/invalid-email"
       ) {
-        alert(
-          "Please enter a valid email address."
+        notify(
+          "Please enter a valid email address.",
+          "error"
         );
       } else {
-        alert(
-          "Login failed. Please try again."
+        notify(
+          "Login failed. Please try again.",
+          "error"
         );
       }
     }
@@ -1470,12 +1675,13 @@ function App() {
 
         const user = result.user;
 
-        alert(
-          `Welcome to TravelBoost, ${
+        notify(
+          `Welcome to HostelConnect, ${
             user.displayName ||
             user.email ||
             "Traveller"
-          }!`
+          }!`,
+          "success"
         );
 
         console.log(
@@ -1515,8 +1721,9 @@ function App() {
           errorCode ===
           "auth/popup-blocked"
         ) {
-          alert(
-            "The Google login popup was blocked by your browser. Please allow popups for this site and try again."
+          notify(
+            "The Google login popup was blocked by your browser. Please allow popups for this site and try again.",
+            "error"
           );
           return;
         }
@@ -1528,8 +1735,9 @@ function App() {
           return;
         }
 
-        alert(
-          "Google login failed. Please try again."
+        notify(
+          "Google login failed. Please try again.",
+          "error"
         );
       }
     };
@@ -1549,12 +1757,13 @@ function App() {
 
         const user = result.user;
 
-        alert(
-          `Welcome to TravelBoost, ${
+        notify(
+          `Welcome to HostelConnect, ${
             user.displayName ||
             user.email ||
             "Traveller"
-          }!`
+          }!`,
+          "success"
         );
 
         console.log(
@@ -1585,8 +1794,9 @@ function App() {
           errorCode ===
           "auth/popup-blocked"
         ) {
-          alert(
-            "The Apple login popup was blocked by your browser. Please allow popups for this site and try again."
+          notify(
+            "The Apple login popup was blocked by your browser. Please allow popups for this site and try again.",
+            "error"
           );
           return;
         }
@@ -1598,8 +1808,9 @@ function App() {
           return;
         }
 
-        alert(
-          "Apple login could not be completed. Please check the Apple provider configuration in Firebase."
+        notify(
+          "Apple login could not be completed. Please check the Apple provider configuration in Firebase.",
+          "error"
         );
       }
     };
@@ -1645,9 +1856,9 @@ function App() {
             type="button"
             className="logo logo-button"
             onClick={closeLogin}
-            aria-label="Back to TravelBoost home"
+            aria-label="Back to HostelConnect home"
           >
-            Travel<span>Boost</span>
+            Hostel<span>Connect</span>
           </button>
 
           <div className="dashboard-user-info">
@@ -1748,7 +1959,7 @@ function App() {
 
           <section className="dashboard-heading">
             <p className="section-label">
-              TRAVELBOOST • PERSONAL DASHBOARD
+              HOSTELCONNECT • PERSONAL DASHBOARD
             </p>
 
             <h1>{dashboardTitle}</h1>
@@ -1987,7 +2198,7 @@ function App() {
                 <p className="ai-recommendation-text">
                   Based on your location,
                   interests, budget, and current
-                  crowd levels, TravelBoost
+                  crowd levels, HostelConnect
                   recommends exploring nearby
                   attractions before visiting the
                   busiest spots.
@@ -2016,8 +2227,9 @@ function App() {
                 type="button"
                 className="primary-btn dashboard-plan-btn"
                 onClick={() =>
-                  alert(
-                    "Trip planning tools coming soon!"
+                  notify(
+                    "Trip planning tools coming soon!",
+                    "info"
                   )
                 }
               >
@@ -2047,8 +2259,9 @@ function App() {
                   type="button"
                   className="secondary-btn"
                   onClick={() =>
-                    alert(
-                      "Local homestays are coming next."
+                    notify(
+                      "Local homestays are coming next.",
+                      "info"
                     )
                   }
                 >
@@ -2075,8 +2288,9 @@ function App() {
                   type="button"
                   className="secondary-btn"
                   onClick={() =>
-                    alert(
-                      "Local guides are coming next."
+                    notify(
+                      "Local guides are coming next.",
+                      "info"
                     )
                   }
                 >
@@ -2103,8 +2317,9 @@ function App() {
                   type="button"
                   className="secondary-btn"
                   onClick={() =>
-                    alert(
-                      "Local arts and crafts are coming next."
+                    notify(
+                      "Local arts and crafts are coming next.",
+                      "info"
                     )
                   }
                 >
@@ -2135,8 +2350,9 @@ function App() {
                   type="button"
                   className="primary-btn"
                   onClick={() =>
-                    alert(
-                      "Crowd analysis will be connected to live data next."
+                    notify(
+                      "Crowd analysis will be connected to live data next.",
+                      "info"
                     )
                   }
                 >
@@ -2222,8 +2438,9 @@ function App() {
                   type="button"
                   className="primary-btn"
                   onClick={() =>
-                    alert(
-                      "Route generation will be connected to maps next."
+                    notify(
+                      "Route generation will be connected to maps next.",
+                      "info"
                     )
                   }
                 >
@@ -2279,8 +2496,9 @@ function App() {
                   type="button"
                   className="secondary-btn"
                   onClick={() =>
-                    alert(
-                      "The full cleanliness reporting system is coming next."
+                    notify(
+                      "The full cleanliness reporting system is coming next.",
+                      "info"
                     )
                   }
                 >
@@ -2312,8 +2530,9 @@ function App() {
                   type="button"
                   className="primary-btn"
                   onClick={() =>
-                    alert(
-                      "Problem reporting will be connected to Firebase next."
+                    notify(
+                      "Problem reporting will be connected to Firebase next.",
+                      "info"
                     )
                   }
                 >
@@ -2427,8 +2646,9 @@ function App() {
                   type="button"
                   className="primary-btn"
                   onClick={() =>
-                    alert(
-                      "Emergency calling will be connected to device services next."
+                    notify(
+                      "Emergency calling will be connected to device services next.",
+                      "info"
                     )
                   }
                 >
@@ -2446,6 +2666,8 @@ function App() {
           <span>🎫 My Trips</span>
           <span>👤 Profile</span>
         </footer>
+
+        <ToastStack toasts={toasts} onDismiss={dismissToast} />
       </div>
     );
   }
@@ -2465,9 +2687,9 @@ function App() {
             type="button"
             className="logo logo-button"
             onClick={logoutLocalProvider}
-            aria-label="Back to TravelBoost home"
+            aria-label="Back to HostelConnect home"
           >
-            Travel<span>Boost</span>
+            Hostel<span>Connect</span>
           </button>
 
           <div className="dashboard-user-info">
@@ -2554,7 +2776,7 @@ function App() {
 
           <section className="dashboard-heading">
             <p className="section-label">
-              TRAVELBOOST • LOCAL PROVIDER
+              HOSTELCONNECT • LOCAL PROVIDER
             </p>
 
             <h1>
@@ -2571,7 +2793,7 @@ function App() {
             </h1>
 
             <p>
-              Manage your TravelBoost local provider
+              Manage your HostelConnect local provider
               profile and traveller activity.
             </p>
           </section>
@@ -2812,8 +3034,9 @@ function App() {
                   type="button"
                   className="primary-btn"
                   onClick={() =>
-                    alert(
-                      "Service details saved locally. Backend sync will be connected by your backend team."
+                    notify(
+                      "Service details saved locally. Backend sync will be connected by your backend team.",
+                      "success"
                     )
                   }
                 >
@@ -2870,8 +3093,9 @@ function App() {
                     type="button"
                     className="primary-btn"
                     onClick={() =>
-                      alert(
-                        "Request accepted. Backend request management will be connected next."
+                      notify(
+                        "Request accepted. Backend request management will be connected next.",
+                        "info"
                       )
                     }
                   >
@@ -2882,8 +3106,9 @@ function App() {
                     type="button"
                     className="secondary-btn"
                     onClick={() =>
-                      alert(
-                        "Request declined. Backend request management will be connected next."
+                      notify(
+                        "Request declined. Backend request management will be connected next.",
+                        "info"
                       )
                     }
                   >
@@ -2979,8 +3204,9 @@ function App() {
                     type="button"
                     className="primary-btn"
                     onClick={() =>
-                      alert(
-                        "Message sending will be connected to the backend next."
+                      notify(
+                        "Message sending will be connected to the backend next.",
+                        "info"
                       )
                     }
                   >
@@ -3001,6 +3227,8 @@ function App() {
             <span>💬 Chats</span>
           )}
         </footer>
+
+        <ToastStack toasts={toasts} onDismiss={dismissToast} />
       </div>
     );
   }
@@ -3020,9 +3248,9 @@ function App() {
             type="button"
             className="logo logo-button"
             onClick={closeLogin}
-            aria-label="Back to TravelBoost home"
+            aria-label="Back to HostelConnect home"
           >
-            Travel<span>Boost</span>
+            Hostel<span>Connect</span>
           </button>
 
           <button
@@ -3050,7 +3278,7 @@ function App() {
             </h1>
 
             <p>
-              Secure access to the TravelBoost
+              Secure access to the HostelConnect
               authority portal.
             </p>
           </div>
@@ -3113,8 +3341,9 @@ function App() {
                 type="button"
                 className="forgot-password"
                 onClick={() =>
-                  alert(
-                    "Authority password recovery will be available soon."
+                  notify(
+                    "Authority password recovery will be available soon.",
+                    "info"
                   )
                 }
               >
@@ -3141,8 +3370,8 @@ function App() {
               }
             >
               <span className="social-login-icon">
-                G
-              </span>
+                  <GoogleIcon />
+                </span>
 
               <span>
                 Continue with Google
@@ -3151,10 +3380,12 @@ function App() {
 
             <p className="login-register-text">
               Authority access is restricted to
-              verified TravelBoost partners.
+              verified HostelConnect partners.
             </p>
           </form>
         </main>
+
+        <ToastStack toasts={toasts} onDismiss={dismissToast} />
       </div>
     );
   }
@@ -3174,9 +3405,9 @@ function App() {
             type="button"
             className="logo logo-button"
             onClick={closeLogin}
-            aria-label="Back to TravelBoost home"
+            aria-label="Back to HostelConnect home"
           >
-            Travel<span>Boost</span>
+            Hostel<span>Connect</span>
           </button>
 
           <button
@@ -3200,7 +3431,7 @@ function App() {
 
             <h1>
               Welcome back to{" "}
-              <span>TravelBoost.</span>
+              <span>HostelConnect.</span>
             </h1>
 
             <p>
@@ -3267,8 +3498,9 @@ function App() {
                 type="button"
                 className="forgot-password"
                 onClick={() =>
-                  alert(
-                    "Password recovery will be available soon."
+                  notify(
+                    "Password recovery will be available soon.",
+                    "info"
                   )
                 }
               >
@@ -3293,8 +3525,8 @@ function App() {
               onClick={handleLocalGoogleLogin}
             >
               <span className="social-login-icon">
-                G
-              </span>
+                  <GoogleIcon />
+                </span>
 
               <span>
                 Continue with Google
@@ -3303,10 +3535,12 @@ function App() {
 
             <p className="login-register-text">
               Local provider access is reserved
-              for registered TravelBoost partners.
+              for registered HostelConnect partners.
             </p>
           </form>
         </main>
+
+        <ToastStack toasts={toasts} onDismiss={dismissToast} />
       </div>
     );
   }
@@ -3328,9 +3562,9 @@ function App() {
             type="button"
             className="logo logo-button"
             onClick={closeLogin}
-            aria-label="Back to TravelBoost home"
+            aria-label="Back to HostelConnect home"
           >
-            Travel<span>Boost</span>
+            Hostel<span>Connect</span>
           </button>
 
           <button
@@ -3356,7 +3590,7 @@ function App() {
 
             <h1>
               Welcome back to{" "}
-              <span>TravelBoost.</span>
+              <span>HostelConnect.</span>
             </h1>
 
             <p>
@@ -3422,8 +3656,9 @@ function App() {
                 type="button"
                 className="forgot-password"
                 onClick={() =>
-                  alert(
-                    "Password recovery will be available soon."
+                  notify(
+                    "Password recovery will be available soon.",
+                    "info"
                   )
                 }
               >
@@ -3450,8 +3685,8 @@ function App() {
               onClick={handleGoogleLogin}
             >
               <span className="social-login-icon">
-                G
-              </span>
+                  <GoogleIcon />
+                </span>
 
               <span>
                 Continue with Google
@@ -3466,7 +3701,8 @@ function App() {
               onClick={handleAppleLogin}
             >
               <span className="social-login-icon">
-                 </span>
+                  <AppleIcon />
+                </span>
 
               <span>
                 Continue with Apple
@@ -3479,8 +3715,9 @@ function App() {
               type="button"
               className="secondary-btn guest-login-btn"
               onClick={() =>
-                alert(
-                  "Guest exploration will be available soon."
+                notify(
+                  "Guest exploration will be available soon.",
+                  "info"
                 )
               }
             >
@@ -3488,12 +3725,13 @@ function App() {
             </button>
 
             <p className="login-register-text">
-              New to TravelBoost?{" "}
+              New to HostelConnect?{" "}
               <button
                 type="button"
                 onClick={() =>
-                  alert(
-                    "Account registration will be available soon."
+                  notify(
+                    "Account registration will be available soon.",
+                    "info"
                   )
                 }
               >
@@ -3502,6 +3740,8 @@ function App() {
             </p>
           </form>
         </main>
+
+        <ToastStack toasts={toasts} onDismiss={dismissToast} />
       </div>
     );
   }
@@ -3523,9 +3763,9 @@ function App() {
             type="button"
             className="logo logo-button"
             onClick={closeLogin}
-            aria-label="Back to TravelBoost home"
+            aria-label="Back to HostelConnect home"
           >
-            Travel<span>Boost</span>
+            Hostel<span>Connect</span>
           </button>
 
           <button
@@ -3547,7 +3787,7 @@ function App() {
 
             <h1>
               Welcome to{" "}
-              <span>TravelBoost.</span>
+              <span>HostelConnect.</span>
             </h1>
 
             <p>
@@ -3649,6 +3889,8 @@ function App() {
 
           </div>
         </main>
+
+        <ToastStack toasts={toasts} onDismiss={dismissToast} />
       </div>
     );
   }
@@ -3660,6 +3902,10 @@ function App() {
   if (selectedDestination) {
     return (
       <div className="app destination-page">
+        <div className="background-glow glow-one" />
+        <div className="background-glow glow-two" />
+        <div className="background-glow glow-three" />
+
         <nav className="navbar">
           <button
             type="button"
@@ -3668,7 +3914,7 @@ function App() {
               scrollToSection("home")
             }
           >
-            Travel<span>Boost</span>
+            Hostel<span>Connect</span>
           </button>
 
           <div className="nav-links">
@@ -3789,7 +4035,7 @@ function App() {
 
                   <div>
                     <p>
-                      TravelBoost Pick
+                      HostelConnect Pick
                     </p>
 
                     <strong>
@@ -3857,8 +4103,9 @@ function App() {
                 type="button"
                 className="primary-btn"
                 onClick={() =>
-                  alert(
-                    `Your ${selectedDestination.name} trip planner is coming soon!`
+                  notify(
+                    `Your ${selectedDestination.name} trip planner is coming soon!`,
+                    "info"
                   )
                 }
               >
@@ -3867,6 +4114,8 @@ function App() {
             </div>
           </section>
         </main>
+
+        <ToastStack toasts={toasts} onDismiss={dismissToast} />
       </div>
     );
   }
@@ -3877,6 +4126,9 @@ function App() {
 
   return (
     <div className="app">
+      <div className="background-glow glow-one" />
+      <div className="background-glow glow-two" />
+      <div className="background-glow glow-three" />
 
       {/* NAVBAR */}
 
@@ -3889,7 +4141,7 @@ function App() {
           }
           aria-label="Go to home"
         >
-          Travel<span>Boost</span>
+          Hostel<span>Connect</span>
         </button>
 
         <div className="nav-links">
@@ -3934,7 +4186,7 @@ function App() {
 
       {/* HERO SECTION */}
 
-      <main id="home" className="hero">
+      <main id="home" className="hero" ref={heroRef}>
 
         <div className="hero-content">
           <p className="tag hero-tag">
@@ -3951,7 +4203,7 @@ function App() {
           </h1>
 
           <p className="description hero-description">
-            TravelBoost helps you discover
+            HostelConnect helps you discover
             amazing destinations, plan
             unforgettable trips, and make
             every journey easier.
@@ -4068,15 +4320,20 @@ function App() {
                     destination
                   )
                 }
-                style={{
-                  backgroundImage: `linear-gradient(
-                    to bottom,
-                    rgba(7, 19, 33, 0.05) 20%,
-                    rgba(7, 19, 33, 0.95) 100%
-                  ), url("${destination.image}")`,
-                }}
                 aria-label={`Explore ${destination.name}`}
               >
+                <span
+                  className="destination-image"
+                  aria-hidden="true"
+                  style={{
+                    backgroundImage: `linear-gradient(
+                      to bottom,
+                      rgba(7, 25, 48, 0.04) 24%,
+                      rgba(7, 25, 48, 0.92) 100%
+                    ), url("${destination.image}")`,
+                  }}
+                />
+
                 <div className="destination-overlay">
 
                   <div>
@@ -4163,7 +4420,7 @@ function App() {
       <footer className="footer">
 
         <div className="footer-logo">
-          Travel<span>Boost</span>
+          Hostel<span>Connect</span>
         </div>
 
         <p>
@@ -4172,12 +4429,13 @@ function App() {
         </p>
 
         <p className="footer-copy">
-          © 2026 TravelBoost. Built for
+          © 2026 HostelConnect. Built for
           explorers.
         </p>
 
       </footer>
 
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 }
