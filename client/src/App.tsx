@@ -6,8 +6,14 @@ import {
   type KeyboardEvent,
 } from "react";
 import {
+  createUserWithEmailAndPassword,
+  onAuthStateChanged,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signInWithPopup,
+  signOut,
+  updateProfile,
+  type User,
 } from "firebase/auth";
 import {
   auth,
@@ -15,6 +21,7 @@ import {
   appleProvider,
 } from "./firebase";
 import { ToastStack, type ToastItem } from "./Toast";
+import * as store from "./store";
 import "./App.css";
 
 type Destination = {
@@ -101,6 +108,161 @@ const destinations: Destination[] = [
     ],
   },
 ];
+
+/* =========================================================
+   CROWD MONITORING MODEL
+   Baseline occupancy per monitored spot. Both the traveller
+   Crowd Predictor and the Authority portal derive their
+   figures from this shared data + the current hour, so the
+   numbers stay consistent across the app (deterministic
+   estimates — the UI never claims a live sensor feed).
+========================================================= */
+
+type ItineraryPace = "Relaxed" | "Balanced" | "Packed";
+
+type CrowdSpot = {
+  name: string;
+  icon: string;
+  level: string;
+  baseline: number;
+  density: string;
+  trend: string;
+  wait: string;
+  alert: string;
+};
+
+const crowdSpots: CrowdSpot[] = [
+  {
+    name: "Shaniwar Wada, Pune",
+    icon: "🔴",
+    level: "High Density",
+    baseline: 4820,
+    density: "HIGH",
+    trend: "Increasing",
+    wait: "25 min",
+    alert: "Critical",
+  },
+  {
+    name: "Aga Khan Palace, Pune",
+    icon: "🟡",
+    level: "Moderate Density",
+    baseline: 1240,
+    density: "MODERATE",
+    trend: "Stable",
+    wait: "10 min",
+    alert: "Watch",
+  },
+  {
+    name: "Sinhagad Fort, Pune",
+    icon: "🟢",
+    level: "Lower Density",
+    baseline: 680,
+    density: "LOW",
+    trend: "Decreasing",
+    wait: "5 min",
+    alert: "Normal",
+  },
+  {
+    name: "Lal Mahal, Pune",
+    icon: "🟢",
+    level: "Lower Density",
+    baseline: 540,
+    density: "LOW",
+    trend: "Stable",
+    wait: "5 min",
+    alert: "Normal",
+  },
+  {
+    name: "Manali, Himachal Pradesh",
+    icon: "🟡",
+    level: "Moderate Density",
+    baseline: 1680,
+    density: "MODERATE",
+    trend: "Increasing",
+    wait: "15 min",
+    alert: "Watch",
+  },
+  {
+    name: "Goa, India",
+    icon: "🟡",
+    level: "Moderate Density",
+    baseline: 2310,
+    density: "MODERATE",
+    trend: "Stable",
+    wait: "15 min",
+    alert: "Watch",
+  },
+  {
+    name: "Jaipur, Rajasthan",
+    icon: "🔴",
+    level: "High Density",
+    baseline: 3450,
+    density: "MODERATE",
+    trend: "Increasing",
+    wait: "20 min",
+    alert: "Watch",
+  },
+  {
+    name: "Kerala, God's Own Country",
+    icon: "🟢",
+    level: "Lower Density",
+    baseline: 920,
+    density: "LOW",
+    trend: "Stable",
+    wait: "10 min",
+    alert: "Normal",
+  },
+];
+
+function estimateBaseline(name: string): number {
+  let hash = 0;
+
+  for (const char of name) {
+    hash = (hash * 31 + char.charCodeAt(0)) % 100003;
+  }
+
+  return 150 + (hash % 4800);
+}
+
+function spotForName(query: string): CrowdSpot | null {
+  const q = query.trim().toLowerCase();
+
+  if (!q) {
+    return null;
+  }
+
+  const known = crowdSpots.find(
+    (spot) =>
+      spot.name.toLowerCase().includes(q) ||
+      q.includes(spot.name.toLowerCase().split(",")[0])
+  );
+
+  if (known) {
+    return known;
+  }
+
+  const destination = destinations.find(
+    (entry) =>
+      entry.name.toLowerCase().includes(q) ||
+      q.includes(entry.name.toLowerCase()) ||
+      entry.location.toLowerCase().includes(q)
+  );
+
+  if (destination) {
+    return {
+      name: `${destination.name}, ${destination.location}`,
+      icon: "🟡",
+      level: "Moderate Density",
+      baseline: estimateBaseline(destination.name),
+      density: "MODERATE",
+      trend: "Stable",
+      wait: "15 min",
+      alert: "Watch",
+    };
+  }
+
+  return null;
+}
 
 /* =========================================================
    BRAND ICONS (vector replacements for the old text glyphs)
@@ -346,8 +508,13 @@ function App() {
   const [userInterest, setUserInterest] =
     useState("Culture");
 
-  const [peopleCount] =
-    useState(1240);
+  const [crowdStats, setCrowdStats] =
+    useState({
+      people: 4820,
+      density: "HIGH",
+      trend: "Increasing",
+      wait: "25 min",
+    });
 
   /* =========================================================
      ADDED: TRAFFIC LEVEL
@@ -368,6 +535,246 @@ function App() {
       : trafficLevel === "Moderate"
       ? "🟡"
       : "🟢";
+
+  /* =========================================================
+     ADDED: REAL AUTH SESSION (Firebase)
+     The auth listener is the source of truth — dashboards
+     can no longer survive a stale frontend state after the
+     user signs out, and a refresh restores the right portal.
+  ========================================================= */
+
+  const [currentUser, setCurrentUser] =
+    useState<User | null>(null);
+
+  const [userRole, setUserRole] =
+    useState<store.UserRole | null>(null);
+
+  const [storeMode, setStoreMode] =
+    useState<store.StoreMode>(store.getStoreMode());
+
+  const sessionRoutedRef = useRef(false);
+
+  /* registration */
+
+  const [showRegister, setShowRegister] =
+    useState(false);
+
+  const [isRegistering, setIsRegistering] =
+    useState(false);
+
+  const [registerName, setRegisterName] =
+    useState("");
+
+  const [registerEmail, setRegisterEmail] =
+    useState("");
+
+  const [registerPassword, setRegisterPassword] =
+    useState("");
+
+  const [registerRole, setRegisterRole] =
+    useState<store.UserRole>("traveller");
+
+  const [registerError, setRegisterError] =
+    useState("");
+
+  /* guest mode (kept alive across refreshes in this tab) */
+
+  const [isGuest, setIsGuest] = useState(() => {
+    try {
+      return (
+        window.sessionStorage.getItem(
+          "hostelconnect.guest"
+        ) === "1"
+      );
+    } catch {
+      return false;
+    }
+  });
+
+  /* trip planner */
+
+  const [showTripPlanner, setShowTripPlanner] =
+    useState(false);
+
+  const [plannerTab, setPlannerTab] =
+    useState<"plan" | "route">("plan");
+
+  const [plannerDestId, setPlannerDestId] =
+    useState(destinations[0].id);
+
+  const [plannerDays, setPlannerDays] =
+    useState(3);
+
+  const [plannerPace, setPlannerPace] =
+    useState<"Relaxed" | "Balanced" | "Packed">("Balanced");
+
+  const [plannerHighlights, setPlannerHighlights] =
+    useState<string[]>(destinations[0].highlights.slice(0, 2));
+
+  const [plannerNotes, setPlannerNotes] =
+    useState("");
+
+  const [savedTrip, setSavedTrip] =
+    useState<store.TripPlan | null>(null);
+
+  const [isSavingTrip, setIsSavingTrip] =
+    useState(false);
+
+  /* saved destinations + my requests */
+
+  const [savedIds, setSavedIds] =
+    useState<string[]>([]);
+
+  const [myRequests, setMyRequests] =
+    useState<store.TravellerRequest[]>([]);
+
+  /* local provider browsing */
+
+  const [browseType, setBrowseType] =
+    useState<store.ProviderType | null>(null);
+
+  const [browseQuery, setBrowseQuery] =
+    useState("");
+
+  const [browseItems, setBrowseItems] =
+    useState<store.ProviderProfile[]>([]);
+
+  const [isBrowseLoading, setIsBrowseLoading] =
+    useState(false);
+
+  const [requestFormFor, setRequestFormFor] =
+    useState<string | null>(null);
+
+  const [requestDate, setRequestDate] = useState(
+    () =>
+      new Date(Date.now() + 86400000)
+        .toISOString()
+        .slice(0, 10)
+  );
+
+  const [requestGuests, setRequestGuests] =
+    useState(2);
+
+  const [requestNote, setRequestNote] =
+    useState("");
+
+  const [isSendingRequest, setIsSendingRequest] =
+    useState(false);
+
+  const [reviewFormFor, setReviewFormFor] =
+    useState<string | null>(null);
+
+  const [reviewRating, setReviewRating] =
+    useState(5);
+
+  const [reviewText, setReviewText] =
+    useState("");
+
+  /* crowd search */
+
+  const [crowdQuery, setCrowdQuery] =
+    useState("Shaniwar Wada");
+
+  const [crowdMessage, setCrowdMessage] =
+    useState("");
+
+  /* cleanliness reports / complaints */
+
+  const [reports, setReports] =
+    useState<store.CleanlinessReport[]>([]);
+
+  const [isViewingProblems, setIsViewingProblems] =
+    useState(false);
+
+  const [isLoadingReports, setIsLoadingReports] =
+    useState(false);
+
+  const [reportProblem, setReportProblem] =
+    useState("");
+
+  const [reportLocation, setReportLocation] =
+    useState("");
+
+  const [reportDetails, setReportDetails] =
+    useState("");
+
+  const [isSubmittingReport, setIsSubmittingReport] =
+    useState(false);
+
+  const [isVoting, setIsVoting] =
+    useState(false);
+
+  const [officerDrafts, setOfficerDrafts] =
+    useState<Record<string, string>>({});
+
+  const [isHandlingComplaintId, setIsHandlingComplaintId] =
+    useState<string | null>(null);
+
+  /* provider dashboard data */
+
+  const [providerAbout, setProviderAbout] =
+    useState(
+      "Comfortable local stay with a genuine regional experience."
+    );
+
+  const [isSavingProvider, setIsSavingProvider] =
+    useState(false);
+
+  const [providerRequests, setProviderRequests] =
+    useState<store.TravellerRequest[]>([]);
+
+  const [isLoadingRequests, setIsLoadingRequests] =
+    useState(false);
+
+  const [isHandlingRequestId, setIsHandlingRequestId] =
+    useState<string | null>(null);
+
+  const [providerThreads, setProviderThreads] =
+    useState<store.ChatThread[]>([]);
+
+  const [activeThreadId, setActiveThreadId] =
+    useState<string | null>(null);
+
+  const [threadMessages, setThreadMessages] =
+    useState<store.ChatMessage[]>([]);
+
+  const [chatDraft, setChatDraft] =
+    useState("");
+
+  const [isSendingChat, setIsSendingChat] =
+    useState(false);
+
+  const [providerReviews, setProviderReviews] =
+    useState<store.Review[]>([]);
+
+  /* authority dashboard data */
+
+  const [showControls, setShowControls] =
+    useState(false);
+
+  const [thresholdDraft, setThresholdDraft] =
+    useState("4500");
+
+  const [criticalThreshold, setCriticalThreshold] =
+    useState(4500);
+
+  const [isSavingControls, setIsSavingControls] =
+    useState(false);
+
+  const [showAvailability, setShowAvailability] =
+    useState(false);
+
+  const [coordUnit, setCoordUnit] =
+    useState("Police — nearby units");
+
+  const [coordNote, setCoordNote] =
+    useState("");
+
+  const [isLoggingCoord, setIsLoggingCoord] =
+    useState(false);
+
+  const [safetyLogs, setSafetyLogs] =
+    useState<store.SafetyLog[]>([]);
 
   /* =========================================================
      ADDED: SEARCH / SELECT LOCATION
@@ -468,8 +875,11 @@ function App() {
   const [providerType, setProviderType] =
     useState("Homestay");
 
-  const [providerRating] =
+  const [providerRating, setProviderRating] =
     useState("4.8");
+
+  const [providerReviewCount, setProviderReviewCount] =
+    useState(0);
 
   const [providerLanguages, setProviderLanguages] =
     useState("English • Hindi • Marathi");
@@ -536,6 +946,10 @@ function App() {
     dashboardSection,
     localDashboardSection,
     authorityDashboardSection,
+    showRegister,
+    showTripPlanner,
+    plannerTab,
+    browseType,
   ]);
 
   /* =========================================================
@@ -711,8 +1125,158 @@ function App() {
     }, 100);
   };
 
+  /* ---------------------------------------------------------
+     WORKSPACE LOADERS (real data per portal)
+  --------------------------------------------------------- */
+
+  async function loadTravellerWorkspace() {
+    if (!currentUser) {
+      return;
+    }
+
+    const uid = currentUser.uid;
+
+    try {
+      const [trip, ids, requests] = await Promise.all([
+        store.loadTrip(uid),
+        store.loadSavedDestinations(uid),
+        store.listRequestsForTraveller(uid),
+      ]);
+
+      setSavedTrip(trip);
+      setSavedIds(ids);
+      setMyRequests(requests);
+    } catch {
+      /* dashboard keeps its current data on failure */
+    }
+  }
+
+  async function loadProviderWorkspace() {
+    if (!currentUser) {
+      return;
+    }
+
+    const uid = currentUser.uid;
+
+    setIsLoadingRequests(true);
+
+    try {
+      const [profile, requests, threads, reviews] =
+        await Promise.all([
+          store.loadProviderProfile(uid),
+          store.listRequestsForProvider(uid),
+          store.listThreadsForProvider(uid),
+          store.listReviews(uid),
+        ]);
+
+      if (profile) {
+        setProviderName(profile.name);
+        setProviderLocation(profile.location);
+        setProviderType(profile.type);
+        setProviderLanguages(profile.languages);
+        setServicePrice(profile.price);
+        setServiceAvailability(profile.availability);
+        setProviderAbout(profile.about);
+        setProviderRating(profile.rating);
+        setProviderReviewCount(profile.reviewCount);
+      }
+
+      setProviderRequests(requests);
+      setProviderThreads(threads);
+      setProviderReviews(reviews);
+    } finally {
+      setIsLoadingRequests(false);
+    }
+  }
+
+  async function refreshReports() {
+    setIsLoadingReports(true);
+
+    try {
+      setReports(await store.listReports());
+    } catch {
+      /* the empty state stays — nothing was hidden */
+    } finally {
+      setIsLoadingReports(false);
+    }
+  }
+
+  async function loadAuthorityWorkspace() {
+    try {
+      const [settings, logs] = await Promise.all([
+        store.loadAuthoritySettings(),
+        store.listSafetyLogs(),
+      ]);
+
+      setCriticalThreshold(settings.criticalThreshold);
+      setThresholdDraft(String(settings.criticalThreshold));
+      setSafetyLogs(logs);
+    } catch {
+      /* defaults remain active */
+    }
+
+    await refreshReports();
+  }
+
+  function openDashboardForRole(
+    role: store.UserRole
+  ) {
+    setShowLogin(false);
+    setShowUserLogin(false);
+    setShowLocalLogin(false);
+    setShowAuthorityLogin(false);
+    setShowRegister(false);
+
+    if (isGuest) {
+      setIsGuest(false);
+
+      try {
+        window.sessionStorage.removeItem(
+          "hostelconnect.guest"
+        );
+      } catch {
+        /* private mode — in-memory flag still clears */
+      }
+    }
+
+    if (role === "authority") {
+      setShowUserDashboard(false);
+      setShowLocalDashboard(false);
+      setShowAuthorityDashboard(true);
+      setAuthorityDashboardSection("overview");
+
+      void loadAuthorityWorkspace();
+    } else if (role === "provider") {
+      setShowUserDashboard(false);
+      setShowAuthorityDashboard(false);
+      setShowLocalDashboard(true);
+      setLocalDashboardSection("profile");
+
+      void loadProviderWorkspace();
+    } else {
+      setShowLocalDashboard(false);
+      setShowAuthorityDashboard(false);
+      setShowUserDashboard(true);
+      setDashboardSection("overview");
+
+      void loadTravellerWorkspace();
+    }
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  }
+
   const openLogin = () => {
     setMobileMenuOpen(false);
+
+    /* already signed in → straight to the right portal */
+    if (currentUser) {
+      openDashboardForRole(userRole ?? "traveller");
+      return;
+    }
+
     setSelectedDestination(null);
     setShowUserLogin(false);
     setShowLocalLogin(false);
@@ -837,14 +1401,7 @@ function App() {
         user
       );
 
-      setShowLocalLogin(false);
-      setShowLogin(false);
-      setShowLocalDashboard(true);
-
-      window.scrollTo({
-        top: 0,
-        behavior: "smooth",
-      });
+      await completeSignIn(user, "provider");
     } catch (error) {
       console.error(
         "Local login error:",
@@ -901,14 +1458,7 @@ function App() {
           user
         );
 
-        setShowLocalLogin(false);
-        setShowLogin(false);
-        setShowLocalDashboard(true);
-
-        window.scrollTo({
-          top: 0,
-          behavior: "smooth",
-        });
+        await completeSignIn(user, "provider");
       } catch (error) {
         console.error(
           "Local Google login error:",
@@ -1006,14 +1556,7 @@ function App() {
         user
       );
 
-      setShowAuthorityLogin(false);
-      setShowLogin(false);
-      setShowAuthorityDashboard(true);
-
-      window.scrollTo({
-        top: 0,
-        behavior: "smooth",
-      });
+      await completeSignIn(user, "authority");
     } catch (error) {
       console.error(
         "Authority login error:",
@@ -1070,14 +1613,7 @@ function App() {
           user
         );
 
-        setShowAuthorityLogin(false);
-        setShowLogin(false);
-        setShowAuthorityDashboard(true);
-
-        window.scrollTo({
-          top: 0,
-          behavior: "smooth",
-        });
+        await completeSignIn(user, "authority");
       } catch (error) {
         console.error(
           "Authority Google login error:",
@@ -1106,6 +1642,1430 @@ function App() {
     };
 
   /* =========================================================
+     ADDED: AUTH SESSION PLUMBING
+     Firebase's auth state is the source of truth: role-based
+     routing, refresh restore, and hard teardown on sign-out.
+  ========================================================= */
+
+  useEffect(
+    () => store.onStoreModeChange(setStoreMode),
+    []
+  );
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(
+      auth,
+      (user) => {
+        setCurrentUser(user);
+
+        if (!user) {
+          setUserRole(null);
+          sessionRoutedRef.current = false;
+
+          /* signed out — protected views must not remain
+             open on stale frontend state */
+          setShowUserDashboard(false);
+          setShowLocalDashboard(false);
+          setShowAuthorityDashboard(false);
+          setShowTripPlanner(false);
+          setBrowseType(null);
+
+          return;
+        }
+
+        void (async () => {
+          const restoredRole =
+            (await store.fetchUserRole(user.uid)) ??
+            "traveller";
+
+          setUserRole(restoredRole);
+
+          /* a refresh restores the right portal; live logins
+             already route through completeSignIn() */
+          if (!sessionRoutedRef.current) {
+            sessionRoutedRef.current = true;
+
+            openDashboardForRole(restoredRole);
+          }
+        })();
+      }
+    );
+
+    return unsubscribe;
+    // routing is intentionally evaluated once per auth event
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+
+
+  const completeSignIn = async (
+    user: User,
+    fallbackRole: store.UserRole
+  ) => {
+    let role: store.UserRole = fallbackRole;
+    let hasStoredRole = false;
+
+    try {
+      const storedRole = await store.fetchUserRole(user.uid);
+
+      if (storedRole) {
+        role = storedRole;
+        hasStoredRole = true;
+      }
+    } catch {
+      hasStoredRole = false;
+    }
+
+    if (!hasStoredRole) {
+      void store.ensureUserDoc(user, fallbackRole);
+    }
+
+    setUserRole(role);
+    sessionRoutedRef.current = true;
+
+    openDashboardForRole(role);
+  };
+
+  const performLogout = async () => {
+    sessionRoutedRef.current = false;
+
+    try {
+      await signOut(auth);
+
+      notify(
+        "You have been signed out of HostelConnect.",
+        "info"
+      );
+    } catch {
+      notify(
+        "Could not sign out. Please try again.",
+        "error"
+      );
+    }
+  };
+
+
+  /* ---------------------------------------------------------
+     FORGOT PASSWORD — real sendPasswordResetEmail
+  --------------------------------------------------------- */
+
+  const handleForgotPassword = async (
+    email: string
+  ) => {
+    const target = email.trim();
+
+    if (
+      !target ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(target)
+    ) {
+      notify(
+        "Type your email in the field above first — we will send the reset link there.",
+        "error"
+      );
+      return;
+    }
+
+    try {
+      await sendPasswordResetEmail(auth, target);
+
+      notify(
+        `A password reset email is on its way to ${target}. Check your inbox (and spam folder).`,
+        "success"
+      );
+    } catch (error) {
+      const code = (error as { code?: string })?.code;
+
+      if (
+        code === "auth/user-not-found" ||
+        code === "auth/invalid-email"
+      ) {
+        notify(
+          "No account matches that email, so no reset email was sent.",
+          "error"
+        );
+      } else if (code === "auth/too-many-requests") {
+        notify(
+          "Too many reset attempts — please wait a minute and try again.",
+          "error"
+        );
+      } else {
+        notify(
+          "We could not send the reset email right now. Please try again.",
+          "error"
+        );
+      }
+    }
+  };
+
+  /* ---------------------------------------------------------
+     GUEST MODE
+  --------------------------------------------------------- */
+
+  const enterGuestMode = () => {
+    setIsGuest(true);
+
+    try {
+      window.sessionStorage.setItem(
+        "hostelconnect.guest",
+        "1"
+      );
+    } catch {
+      /* guest flag lives in memory only this session */
+    }
+
+    setShowLogin(false);
+    setShowUserLogin(false);
+    setShowLocalLogin(false);
+    setShowAuthorityLogin(false);
+    setShowRegister(false);
+
+    notify(
+      "You are exploring as a guest. Destinations are fully open — sign in any time to save trips and contact locals.",
+      "info"
+    );
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  };
+
+  /* ---------------------------------------------------------
+     REGISTRATION — real createUserWithEmailAndPassword
+  --------------------------------------------------------- */
+
+  const openRegister = () => {
+    setRegisterError("");
+    setShowRegister(true);
+    setShowLogin(false);
+    setShowUserLogin(false);
+    setShowLocalLogin(false);
+    setShowAuthorityLogin(false);
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  };
+
+  const closeRegister = () => {
+    setShowRegister(false);
+    setShowLogin(true);
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  };
+
+  const handleRegister = async (
+    event: FormEvent<HTMLFormElement>
+  ) => {
+    event.preventDefault();
+
+    const name = registerName.trim();
+    const email = registerEmail.trim();
+
+    if (name.length < 2) {
+      setRegisterError("Enter your full name.");
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setRegisterError("Enter a valid email address.");
+      return;
+    }
+
+    if (registerPassword.length < 6) {
+      setRegisterError(
+        "Choose a password with at least 6 characters."
+      );
+      return;
+    }
+
+    setRegisterError("");
+    setIsRegistering(true);
+
+    try {
+      const result =
+        await createUserWithEmailAndPassword(
+          auth,
+          email,
+          registerPassword
+        );
+
+      await updateProfile(result.user, {
+        displayName: name,
+      });
+
+      await store.ensureUserDoc(
+        result.user,
+        registerRole
+      );
+
+      notify(
+        `Account created — welcome to HostelConnect, ${name}!`,
+        "success"
+      );
+
+      setRegisterName("");
+      setRegisterEmail("");
+      setRegisterPassword("");
+
+      setUserRole(registerRole);
+      sessionRoutedRef.current = true;
+
+      openDashboardForRole(registerRole);
+    } catch (error) {
+      const code = (error as { code?: string })?.code;
+
+      if (code === "auth/email-already-in-use") {
+        setRegisterError(
+          "An account with this email already exists. Sign in instead — or use the \"Forgot password?\" link."
+        );
+      } else if (code === "auth/weak-password") {
+        setRegisterError(
+          "Choose a stronger password (at least 6 characters)."
+        );
+      } else if (code === "auth/invalid-email") {
+        setRegisterError(
+          "That email address is not valid."
+        );
+      } else if (
+        code === "auth/operation-not-allowed"
+      ) {
+        setRegisterError(
+          "Email/password sign-up is disabled for this Firebase project. Enable it under Authentication → Sign-in method."
+        );
+      } else if (
+        code === "auth/network-request-failed"
+      ) {
+        setRegisterError(
+          "Network error — check your connection and try again."
+        );
+      } else {
+        setRegisterError(
+          "Could not create the account. Please try again."
+        );
+      }
+    } finally {
+      setIsRegistering(false);
+    }
+  };
+
+  /* ---------------------------------------------------------
+     CROWD SEARCH (internal monitored-spot model)
+  --------------------------------------------------------- */
+
+  const searchCrowdSpot = () => {
+    const query = crowdQuery.trim();
+
+    if (!query) {
+      setCrowdMessage(
+        "Type a spot name to check crowd levels."
+      );
+      return;
+    }
+
+    const spot = spotForName(query);
+
+    if (!spot) {
+      setCrowdMessage(
+        `"${query}" is not on the HostelConnect watchlist yet. Try Shaniwar Wada, Aga Khan Palace, Sinhagad Fort, Lal Mahal, Manali, Goa, Jaipur, or Kerala.`
+      );
+      return;
+    }
+
+    const hour = new Date().getHours();
+    const factor =
+      hour >= 10 && hour <= 17 ? 1 : 0.55;
+
+    const people = Math.round(
+      spot.baseline * factor
+    );
+
+    const density =
+      people > 3000
+        ? "HIGH"
+        : people > 1000
+        ? "MODERATE"
+        : "LOW";
+
+    const waitMinutes = Math.max(
+      5,
+      Math.round(
+        parseInt(spot.wait, 10) * (0.6 + factor * 0.5)
+      )
+    );
+
+    setCrowdStats({
+      people,
+      density,
+      trend: spot.trend,
+      wait: `${waitMinutes} min`,
+    });
+
+    setSelectedLocation(spot.name);
+    setLocationQuery(spot.name);
+    setCrowdMessage("");
+  };
+
+  const handleCrowdKeyDown = (
+    event: KeyboardEvent<HTMLInputElement>
+  ) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      searchCrowdSpot();
+    }
+  };
+
+  /* ---------------------------------------------------------
+     TRIP PLANNER (Plan My Trip / Generate My Route)
+  --------------------------------------------------------- */
+
+  const openTripPlanner = (
+    destination: Destination | null,
+    tab: "plan" | "route" = "plan"
+  ) => {
+    if (!currentUser) {
+      notify(
+        "Please sign in to plan trips — your itinerary is saved to your account.",
+        "info"
+      );
+      openLogin();
+
+      return;
+    }
+
+    if (destination) {
+      setPlannerDestId(destination.id);
+      setPlannerHighlights(destination.highlights.slice(0, 2));
+    } else if (savedTrip) {
+      setPlannerDestId(savedTrip.destinationId);
+      setPlannerDays(savedTrip.days);
+      setPlannerPace(savedTrip.pace);
+      setPlannerNotes(savedTrip.notes);
+
+      if (savedTrip.highlights.length) {
+        setPlannerHighlights(savedTrip.highlights);
+      }
+    }
+
+    setPlannerTab(tab);
+    setShowTripPlanner(true);
+
+    if (tab === "route" && !savedTrip) {
+      notify(
+        "Save a plan first — HostelConnect turns it into a day-by-day route.",
+        "info"
+      );
+    }
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  };
+
+  const handleSaveTrip = async (alsoRoute = false) => {
+    if (!currentUser) {
+      return;
+    }
+
+    const uid = currentUser.uid;
+
+    const destination = destinations.find(
+      (entry) => entry.id === plannerDestId
+    );
+
+    if (!destination) {
+      notify("Pick a destination first.", "error");
+      return;
+    }
+
+    if (plannerDays < 1 || plannerDays > 14) {
+      notify("Choose between 1 and 14 days.", "error");
+      return;
+    }
+
+    if (plannerHighlights.length === 0) {
+      notify("Pick at least one highlight to include.", "error");
+      return;
+    }
+
+    setIsSavingTrip(true);
+
+    try {
+      const saved = await store.saveTrip(uid, {
+        destinationId: destination.id,
+        destinationName: destination.name,
+        location: destination.location,
+        days: plannerDays,
+        pace: plannerPace,
+        highlights: plannerHighlights,
+        notes: plannerNotes.trim(),
+        updatedAt: new Date().toISOString(),
+      });
+
+      setSavedTrip(saved);
+
+      notify(
+        store.getStoreMode() === "cloud"
+          ? "Trip saved to your HostelConnect account."
+          : "Trip saved on this device — connect Firestore to sync across devices.",
+        "success"
+      );
+
+      if (alsoRoute) {
+        setPlannerTab("route");
+      }
+    } catch {
+      notify("Could not save your trip. Please try again.", "error");
+    } finally {
+      setIsSavingTrip(false);
+    }
+  };
+
+  const handleDeleteTrip = async () => {
+    if (!currentUser || !savedTrip) {
+      return;
+    }
+
+    try {
+      await store.deleteTrip(currentUser.uid);
+      setSavedTrip(null);
+      notify("Trip plan deleted.", "info");
+    } catch {
+      notify("Could not delete the trip.", "error");
+    }
+  };
+
+  type ItineraryDay = {
+    label: string;
+    items: string[];
+  };
+
+  const buildItinerary = (plan: store.TripPlan): ItineraryDay[] => {
+    const explorationDays = Math.max(1, plan.days - 1);
+
+    const perDay =
+      plan.pace === "Relaxed"
+        ? 1
+        : plan.pace === "Packed"
+        ? 2
+        : Math.max(
+            1,
+            Math.ceil(plan.highlights.length / explorationDays)
+          );
+
+    const chunks: string[][] = [];
+
+    for (let i = 0; i < plan.highlights.length; i += perDay) {
+      chunks.push(plan.highlights.slice(i, i + perDay));
+    }
+
+    const days: ItineraryDay[] = [];
+
+    for (let day = 1; day <= plan.days; day += 1) {
+      const isLast = day === plan.days;
+      const items: string[] = [];
+
+      if (day === 1) {
+        items.push(
+          `Arrive in ${plan.destinationName}, check in`
+        );
+
+        if (plan.notes) {
+          items.push(`Notes: ${plan.notes}`);
+        }
+      }
+
+      if (chunks[day - 1]) {
+        items.push(...chunks[day - 1]);
+      } else if (!isLast) {
+        items.push(`Free exploration — ${plan.location}`);
+      }
+
+      if (isLast && plan.days > 1) {
+        items.push("Last-minute shopping and departure");
+      }
+
+      days.push({
+        label:
+          day === 1
+            ? `Day ${day} — Arrival`
+            : isLast
+            ? `Day ${day} — Departure`
+            : `Day ${day}`,
+        items,
+      });
+    }
+
+    return days;
+  };
+
+  const downloadTextFile = (
+    filename: string,
+    mime: string,
+    content: string
+  ) => {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+
+    anchor.href = url;
+    anchor.download = filename;
+
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+
+    window.setTimeout(() => {
+      URL.revokeObjectURL(url);
+    }, 2000);
+  };
+
+  const handleExportTrip = () => {
+    if (!savedTrip) {
+      notify(
+        "Nothing to export yet — save a trip plan first.",
+        "error"
+      );
+      return;
+    }
+
+    const itinerary = buildItinerary(savedTrip);
+
+    const lines = [
+      `HostelConnect — ${savedTrip.destinationName} itinerary`,
+      `${savedTrip.days} days • ${savedTrip.pace} pace${
+        savedTrip.updatedAt
+          ? ` • updated ${new Date(
+              savedTrip.updatedAt
+            ).toLocaleString()}`
+          : ""
+      }`,
+      "",
+      ...itinerary.flatMap((day) => [
+        day.label,
+        ...day.items.map((item) => `  - ${item}`),
+        "",
+      ]),
+    ];
+
+    downloadTextFile(
+      `hostelconnect-${savedTrip.destinationId}-itinerary.txt`,
+      "text/plain;charset=utf-8",
+      lines.join("\n")
+    );
+
+    notify("Itinerary downloaded as a text file.", "success");
+  };
+
+  /* ---------------------------------------------------------
+     EXPLORE LOCAL PARTNERS (Homestays / Guides / Crafts)
+  --------------------------------------------------------- */
+
+  const openBrowse = async (type: store.ProviderType) => {
+    setBrowseType(type);
+    setBrowseQuery("");
+    setRequestFormFor(null);
+    setReviewFormFor(null);
+    setIsBrowseLoading(true);
+
+    try {
+      setBrowseItems(await store.listProviders(type));
+    } catch {
+      setBrowseItems([]);
+    } finally {
+      setIsBrowseLoading(false);
+    }
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  };
+
+  const closeBrowse = () => {
+    setBrowseType(null);
+    setRequestFormFor(null);
+    setReviewFormFor(null);
+  };
+
+  const handleSendRequest = async (
+    provider: store.ProviderProfile
+  ) => {
+    if (!currentUser) {
+      notify("Please sign in to send a request.", "info");
+      openLogin();
+
+      return;
+    }
+
+    if (provider.uid === currentUser.uid) {
+      notify("This is your own listing.", "error");
+      return;
+    }
+
+    if (!requestDate) {
+      notify("Pick a date for your request.", "error");
+      return;
+    }
+
+    setIsSendingRequest(true);
+
+    try {
+      if (
+        await store.hasPendingRequest(
+          provider.uid,
+          currentUser.uid
+        )
+      ) {
+        notify(
+          "You already have a pending request with this partner.",
+          "error"
+        );
+
+        return;
+      }
+
+      const created = await store.createRequest({
+        providerUid: provider.uid,
+        providerName: provider.name,
+        providerType: provider.type,
+        travellerUid: currentUser.uid,
+        travellerEmail: currentUser.email ?? "",
+        travellerName:
+          currentUser.displayName ||
+          currentUser.email ||
+          "Traveller",
+        date: requestDate,
+        guests: Math.max(1, requestGuests),
+        note: requestNote.trim(),
+      });
+
+      setMyRequests((current) => [created, ...current]);
+      setRequestFormFor(null);
+      setRequestNote("");
+
+      notify(
+        store.getStoreMode() === "cloud"
+          ? `Request sent to ${provider.name} — their dashboard updates instantly.`
+          : `Request saved on this device for ${provider.name} while offline mode is active.`,
+        "success"
+      );
+    } catch {
+      notify("Could not send the request. Please try again.", "error");
+    } finally {
+      setIsSendingRequest(false);
+    }
+  };
+
+  const handleSendMessageToProvider = async (
+    provider: store.ProviderProfile
+  ) => {
+    if (!currentUser) {
+      notify("Please sign in first.", "info");
+      openLogin();
+
+      return;
+    }
+
+    const message = requestNote.trim();
+
+    if (!message) {
+      notify(
+        "Type your message in the note field first.",
+        "error"
+      );
+
+      return;
+    }
+
+    const travellerName =
+      currentUser.displayName ||
+      currentUser.email ||
+      "Traveller";
+
+    try {
+      await store.sendMessage({
+        threadId: store.directThreadId(
+          provider.uid,
+          currentUser.uid
+        ),
+        providerUid: provider.uid,
+        travellerUid: currentUser.uid,
+        from: "traveller",
+        name: travellerName,
+        text: message,
+        travellerName,
+        travellerEmail: currentUser.email ?? "",
+        subject: `Enquiry — ${provider.name}`,
+      });
+
+      setRequestFormFor(null);
+      setRequestNote("");
+
+      notify(
+        `Message sent to ${provider.name} — it will appear in their Chats.`,
+        "success"
+      );
+    } catch {
+      notify("Could not send the message. Please try again.", "error");
+    }
+  };
+
+  const handleAddReview = async (
+    provider: store.ProviderProfile
+  ) => {
+    if (!currentUser) {
+      notify("Please sign in to leave a review.", "info");
+      openLogin();
+
+      return;
+    }
+
+    if (provider.uid === currentUser.uid) {
+      notify("You cannot review your own listing.", "error");
+      return;
+    }
+
+    const uid = currentUser.uid;
+
+    try {
+      const existing = await store.listReviews(provider.uid);
+
+      if (
+        existing.some((review) => review.travellerUid === uid)
+      ) {
+        notify("You have already reviewed this partner.", "error");
+
+        return;
+      }
+
+      const result = await store.addReview({
+        providerUid: provider.uid,
+        travellerUid: uid,
+        travellerEmail: currentUser.email ?? "",
+        rating: reviewRating,
+        text: reviewText.trim(),
+      });
+
+      setBrowseItems((current) =>
+        current.map((entry) =>
+          entry.uid === provider.uid
+            ? {
+                ...entry,
+                rating: result.average,
+                reviewCount: result.count,
+              }
+            : entry
+        )
+      );
+
+      setReviewFormFor(null);
+      setReviewText("");
+      setReviewRating(5);
+
+      notify(
+        `Thanks — your rating is live. ${provider.name} is now ${result.average}★ (${result.count} review${result.count === 1 ? "" : "s"}).`,
+        "success"
+      );
+    } catch {
+      notify("Could not save your review.", "error");
+    }
+  };
+
+  /* ---------------------------------------------------------
+     SAVED DESTINATIONS
+  --------------------------------------------------------- */
+
+  const handleToggleSave = async (destinationId: string) => {
+    if (!currentUser) {
+      notify("Please sign in to save destinations.", "info");
+      openLogin();
+
+      return;
+    }
+
+    const uid = currentUser.uid;
+
+    try {
+      const ids = await store.toggleSavedDestination(
+        uid,
+        destinationId
+      );
+
+      setSavedIds(ids);
+
+      notify(
+        ids.includes(destinationId)
+          ? "Saved to your HostelConnect places."
+          : "Removed from your saved places.",
+        "success"
+      );
+    } catch {
+      notify("Could not update your saved places.", "error");
+    }
+  };
+
+  /* ---------------------------------------------------------
+     CLEANLINESS REPORTS
+  --------------------------------------------------------- */
+
+  const handleViewProblems = async () => {
+    if (isViewingProblems) {
+      setIsViewingProblems(false);
+
+      return;
+    }
+
+    await refreshReports();
+    setIsViewingProblems(true);
+  };
+
+  const handleSubmitReport = async () => {
+    if (!currentUser) {
+      notify(
+        "Please sign in so the team can follow up with you.",
+        "info"
+      );
+      openLogin();
+
+      return;
+    }
+
+    const uid = currentUser.uid;
+    const problem = reportProblem.trim();
+    const location = reportLocation.trim();
+
+    if (problem.length < 3) {
+      notify(
+        "Describe the problem briefly (at least 3 characters).",
+        "error"
+      );
+
+      return;
+    }
+
+    if (!location) {
+      notify(
+        "Add the location so reports can be routed correctly.",
+        "error"
+      );
+
+      return;
+    }
+
+    setIsSubmittingReport(true);
+
+    try {
+      const created = await store.addReport({
+        problem,
+        location,
+        details: reportDetails.trim(),
+        reporterUid: uid,
+        reporterEmail: currentUser.email ?? "",
+      });
+
+      setReports((current) => [created, ...current]);
+      setReportProblem("");
+      setReportLocation("");
+      setReportDetails("");
+      setIsViewingProblems(true);
+
+      notify(
+        store.getStoreMode() === "cloud"
+          ? "Report submitted — it is now on the community board and the Authority portal."
+          : "Report saved on this device while offline mode is active.",
+        "success"
+      );
+    } catch {
+      notify("Could not submit the report. Please try again.", "error");
+    } finally {
+      setIsSubmittingReport(false);
+    }
+  };
+
+  const handleVoteReport = async (
+    report: store.CleanlinessReport
+  ) => {
+    if (!currentUser) {
+      notify("Please sign in to upvote community reports.", "info");
+      openLogin();
+
+      return;
+    }
+
+    const uid = currentUser.uid;
+
+    setIsVoting(true);
+
+    try {
+      const result = await store.toggleReportVote(
+        report.id,
+        uid
+      );
+
+      if (!result) {
+        notify("That report is no longer available.", "error");
+
+        return;
+      }
+
+      setReports((current) =>
+        current.map((entry) =>
+          entry.id === report.id
+            ? {
+                ...entry,
+                votes: result.votes,
+                voters: result.voted
+                  ? [...entry.voters, uid]
+                  : entry.voters.filter((voter) => voter !== uid),
+              }
+            : entry
+        )
+      );
+    } catch {
+      notify("Could not record your vote. Please try again.", "error");
+    } finally {
+      setIsVoting(false);
+    }
+  };
+
+  /* ---------------------------------------------------------
+     EMERGENCY
+  --------------------------------------------------------- */
+
+  const handleCallHelp = () => {
+    const dialer = document.createElement("a");
+
+    dialer.href = "tel:112";
+    dialer.rel = "noopener";
+
+    document.body.appendChild(dialer);
+    dialer.click();
+    dialer.remove();
+
+    notify(
+      "Opening your device dialer for 112 — India's all-in-one emergency number. On a desktop, dial 112 manually.",
+      "info"
+    );
+  };
+
+  /* ---------------------------------------------------------
+     PROVIDER WORKSPACE (real saves, requests, chats, reviews)
+  --------------------------------------------------------- */
+
+  const activeThread =
+    providerThreads.find(
+      (thread) => thread.id === activeThreadId
+    ) ?? null;
+
+  const handleSaveProviderProfile = async () => {
+    if (!currentUser) {
+      notify("Please sign in first.", "error");
+
+      return;
+    }
+
+    if (
+      !providerName.trim() ||
+      !providerLocation.trim()
+    ) {
+      notify(
+        "Add your provider name and location before saving.",
+        "error"
+      );
+
+      return;
+    }
+
+    if (!servicePrice.trim()) {
+      notify(
+        "Add a service price so travellers can compare.",
+        "error"
+      );
+
+      return;
+    }
+
+    setIsSavingProvider(true);
+
+    try {
+      await store.saveProviderProfile(currentUser.uid, {
+        email: currentUser.email ?? "",
+        name: providerName.trim(),
+        location: providerLocation.trim(),
+        type: providerType as store.ProviderType,
+        languages: providerLanguages.trim(),
+        price: servicePrice.trim(),
+        availability: serviceAvailability,
+        about: providerAbout.trim(),
+        rating: providerRating,
+        reviewCount: providerReviewCount,
+      });
+
+      notify(
+        store.getStoreMode() === "cloud"
+          ? "Service details saved — travellers can now find you in Explore."
+          : "Service details saved on this device. Deploy Firestore (see firestore.rules) to publish to travellers.",
+        "success"
+      );
+    } catch {
+      notify("Could not save your details. Please try again.", "error");
+    } finally {
+      setIsSavingProvider(false);
+    }
+  };
+
+  const handleRequestDecision = async (
+    request: store.TravellerRequest,
+    next: "accepted" | "declined"
+  ) => {
+    setIsHandlingRequestId(request.id);
+
+    try {
+      await store.setRequestStatus(request.id, next);
+
+      setProviderRequests((current) =>
+        current.map((entry) =>
+          entry.id === request.id
+            ? { ...entry, status: next }
+            : entry
+        )
+      );
+
+      notify(
+        next === "accepted"
+          ? `Request from ${request.travellerName} accepted.`
+          : `Request from ${request.travellerName} declined.`,
+        "success"
+      );
+    } catch (error) {
+      notify(
+        error instanceof Error
+          ? error.message
+          : "Could not update this request.",
+        "error"
+      );
+
+      void loadProviderWorkspace();
+    } finally {
+      setIsHandlingRequestId(null);
+    }
+  };
+
+  const openChatThread = async (threadId: string) => {
+    setActiveThreadId(threadId);
+
+    try {
+      setThreadMessages(
+        await store.listMessages(threadId)
+      );
+    } catch {
+      setThreadMessages([]);
+    }
+  };
+
+  const handleSendChat = async () => {
+    if (!currentUser || !activeThread) {
+      return;
+    }
+
+    const message = chatDraft.trim();
+
+    if (!message) {
+      notify("Type a message first.", "error");
+
+      return;
+    }
+
+    setIsSendingChat(true);
+
+    try {
+      const sent = await store.sendMessage({
+        threadId: activeThread.id,
+        providerUid: currentUser.uid,
+        travellerUid: activeThread.travellerUid,
+        from: "provider",
+        name: providerName,
+        text: message,
+        travellerName: activeThread.travellerName,
+        travellerEmail: activeThread.travellerEmail,
+        subject: activeThread.subject,
+      });
+
+      setThreadMessages((current) => [
+        ...current,
+        sent,
+      ]);
+
+      setChatDraft("");
+
+      notify("Message sent.", "success");
+    } catch {
+      notify("Could not send the message.", "error");
+    } finally {
+      setIsSendingChat(false);
+    }
+  };
+
+  /* ---------------------------------------------------------
+     AUTHORITY WORKSPACE (controls, complaints, coordination)
+  --------------------------------------------------------- */
+
+  const openComplaints = reports
+    .filter((report) => report.status !== "resolved")
+    .slice(0, 4);
+
+  const isSpotCritical = (spot: CrowdSpot) => {
+    const hour = new Date().getHours();
+
+    const factor =
+      hour >= 10 && hour <= 17 ? 1 : 0.55;
+
+    return spot.baseline * factor > criticalThreshold;
+  };
+
+  const handleSaveControls = async () => {
+    const parsed = Number.parseInt(thresholdDraft, 10);
+
+    if (
+      !Number.isFinite(parsed) ||
+      parsed < 500 ||
+      parsed > 50000
+    ) {
+      notify(
+        "Set a critical threshold between 500 and 50,000 visitors.",
+        "error"
+      );
+
+      return;
+    }
+
+    setIsSavingControls(true);
+
+    try {
+      await store.saveAuthoritySettings({
+        criticalThreshold: parsed,
+      });
+
+      setCriticalThreshold(parsed);
+
+      notify(
+        `Monitoring threshold saved — zones above ${parsed.toLocaleString()} visitors are flagged critical.`,
+        "success"
+      );
+    } catch {
+      notify("Could not save monitoring controls.", "error");
+    } finally {
+      setIsSavingControls(false);
+    }
+  };
+
+  const handleAdvanceReport = async (
+    report: store.CleanlinessReport
+  ) => {
+    setIsHandlingComplaintId(report.id);
+
+    const nextStatus =
+      report.status === "open"
+        ? "in-review"
+        : report.status === "in-review"
+        ? "resolved"
+        : "open";
+
+    try {
+      await store.markReport(report.id, {
+        status: nextStatus,
+      });
+
+      setReports((current) =>
+        current.map((entry) =>
+          entry.id === report.id
+            ? { ...entry, status: nextStatus }
+            : entry
+        )
+      );
+
+      notify(
+        nextStatus === "in-review"
+          ? `Complaint "${report.problem}" is now in review.`
+          : nextStatus === "resolved"
+          ? `Complaint "${report.problem}" marked resolved.`
+          : `Complaint "${report.problem}" reopened.`,
+        "success"
+      );
+    } catch {
+      notify("Could not update this complaint.", "error");
+    } finally {
+      setIsHandlingComplaintId(null);
+    }
+  };
+
+  const handleAssignOfficer = async (
+    report: store.CleanlinessReport
+  ) => {
+    const officer = (
+      officerDrafts[report.id] ?? ""
+    ).trim();
+
+    if (officer.length < 2) {
+      notify("Enter the officer's name first.", "error");
+
+      return;
+    }
+
+    setIsHandlingComplaintId(report.id);
+
+    try {
+      await store.markReport(report.id, {
+        officer,
+        status:
+          report.status === "resolved"
+            ? "in-review"
+            : report.status,
+      });
+
+      setReports((current) =>
+        current.map((entry) =>
+          entry.id === report.id
+            ? {
+                ...entry,
+                officer,
+                status:
+                  entry.status === "resolved"
+                    ? "in-review"
+                    : entry.status,
+              }
+            : entry
+        )
+      );
+
+      setOfficerDrafts((current) => {
+        const next = { ...current };
+
+        delete next[report.id];
+
+        return next;
+      });
+
+      notify(
+        `${officer} assigned to "${report.problem}".`,
+        "success"
+      );
+    } catch {
+      notify("Could not assign the officer.", "error");
+    } finally {
+      setIsHandlingComplaintId(null);
+    }
+  };
+
+  const handleLogCoordination = async () => {
+    if (!coordNote.trim()) {
+      notify("Add a short instruction for the unit.", "error");
+
+      return;
+    }
+
+    setIsLoggingCoord(true);
+
+    try {
+      const entry = await store.addSafetyLog({
+        unit: coordUnit,
+        note: coordNote.trim(),
+        byEmail: currentUser?.email ?? "Authority",
+      });
+
+      setSafetyLogs((current) =>
+        [entry, ...current].slice(0, 6)
+      );
+
+      setCoordNote("");
+
+      notify(
+        `Response coordinated with ${coordUnit}.`,
+        "success"
+      );
+    } catch {
+      notify("Could not log the coordination.", "error");
+    } finally {
+      setIsLoggingCoord(false);
+    }
+  };
+
+  const handleExportReport = () => {
+    const esc = (value: string | number) =>
+      `"${String(value).replace(/"/g, '""')}"`;
+
+    const hour = new Date().getHours();
+
+    const factor =
+      hour >= 10 && hour <= 17 ? 1 : 0.55;
+
+    const rows = [
+      "HostelConnect Authority Report",
+      `Generated,"${new Date().toLocaleString()}"`,
+      `Critical threshold,"${criticalThreshold}"`,
+      "",
+      "CROWD MONITORING",
+      "Spot,Visitors (estimated now),Density,Trend,Alert",
+      ...crowdSpots.map(
+        (spot) =>
+          `${esc(spot.name)},${Math.round(
+            spot.baseline * factor
+          )},${esc(spot.density)},${esc(
+            spot.trend
+          )},${
+            isSpotCritical(spot)
+              ? "CRITICAL"
+              : esc(spot.alert)
+          }`
+      ),
+      "",
+      "WEEKLY TREND",
+      "Day,Visitors",
+      "Monday,10240",
+      "Tuesday,11180",
+      "Wednesday,12060",
+      "Thursday,12840",
+      "",
+      "COMPLAINTS & REPORTS",
+      "Problem,Location,Votes,Status,Officer,Reported",
+      ...(reports.length
+        ? reports.map(
+            (report) =>
+              `${esc(report.problem)},${esc(
+                report.location
+              )},${report.votes},${esc(
+                report.status
+              )},${esc(
+                report.officer
+              )},${esc(
+                report.createdAt
+                  ? new Date(
+                      report.createdAt
+                    ).toLocaleDateString()
+                  : ""
+              )}`
+          )
+        : ["No traveller complaints on record"]),
+    ];
+
+    downloadTextFile(
+      `hostelconnect-authority-report-${new Date()
+        .toISOString()
+        .slice(0, 10)}.csv`,
+      "text/csv;charset=utf-8",
+      rows.join("\n")
+    );
+
+    notify("Report exported as CSV.", "success");
+  };
+
+  /* =========================================================
      ADDED: AUTHORITY DASHBOARD NAVIGATION
   ========================================================= */
 
@@ -1114,16 +3074,28 @@ function App() {
   ) => {
     setAuthorityDashboardSection(section);
 
+    /* keep the portal in sync with stored data */
+    if (
+      section === "overview" ||
+      section === "complaints" ||
+      section === "safety" ||
+      section === "reports"
+    ) {
+      void loadAuthorityWorkspace();
+    }
+
     window.scrollTo({
       top: 0,
       behavior: "smooth",
     });
   };
 
-  const logoutAuthority = () => {
+  const logoutAuthority = async () => {
     setShowAuthorityDashboard(false);
     setShowAuthorityLogin(false);
     setShowLogin(false);
+
+    await performLogout();
 
     setTimeout(() => {
       document.getElementById("home")?.scrollIntoView({
@@ -1335,35 +3307,7 @@ function App() {
 
           {authorityDashboardSection === "crowd" && (
             <div className="dashboard-feature-panel reveal">
-              {[
-                {
-                  icon: "🔴",
-                  level: "High Density",
-                  name: "Shaniwar Wada, Pune",
-                  visitors: "4,820",
-                  density: "HIGH",
-                  trend: "Increasing",
-                  alert: "Critical",
-                },
-                {
-                  icon: "🟡",
-                  level: "Moderate Density",
-                  name: "Aga Khan Palace",
-                  visitors: "1,240",
-                  density: "MODERATE",
-                  trend: "Stable",
-                  alert: "Watch",
-                },
-                {
-                  icon: "🟢",
-                  level: "Lower Density",
-                  name: "Sinhagad Fort",
-                  visitors: "680",
-                  density: "LOW",
-                  trend: "Decreasing",
-                  alert: "Normal",
-                },
-              ].map((spot) => (
+              {crowdSpots.map((spot) => (
                 <div
                   className="dashboard-card"
                   key={spot.name}
@@ -1376,7 +3320,9 @@ function App() {
 
                   <div className="dashboard-stat-row">
                     <span>Current visitors</span>
-                    <strong>{spot.visitors}</strong>
+                    <strong>
+                      {spot.baseline.toLocaleString()}
+                    </strong>
                   </div>
 
                   <div className="dashboard-stat-row">
@@ -1401,79 +3347,220 @@ function App() {
                 <h2>Destination Controls</h2>
 
                 <p>
-                  Future backend integration can connect
-                  these controls to live sensors, maps, and
-                  alerts.
+                  Set the critical crowd threshold used across
+                  this portal.{" "}
+                  {
+                    crowdSpots.filter(isSpotCritical)
+                      .length
+                  }{" "}
+                  zone
+                  {
+                    crowdSpots.filter(isSpotCritical)
+                      .length === 1
+                      ? ""
+                      : "s"
+                  }{" "}
+                  exceed it right now.
                 </p>
 
                 <button
                   type="button"
                   className="primary-btn"
+                  aria-expanded={showControls}
                   onClick={() =>
-                    notify(
-                      "Live crowd controls will be connected by the backend team.",
-                      "info"
-                    )
+                    setShowControls((open) => !open)
                   }
                 >
-                  Open Controls →
+                  {showControls
+                    ? "Hide Controls"
+                    : "Open Controls →"}
                 </button>
+
+                {showControls && (
+                  <div className="inline-form">
+                    <p>Critical threshold (visitors)</p>
+
+                    <input
+                      type="number"
+                      min={500}
+                      max={50000}
+                      step={100}
+                      aria-label="Critical crowd threshold"
+                      value={thresholdDraft}
+                      onChange={(event) =>
+                        setThresholdDraft(
+                          event.target.value
+                        )
+                      }
+                    />
+
+                    <button
+                      type="button"
+                      className="primary-btn"
+                      disabled={isSavingControls}
+                      onClick={() =>
+                        void handleSaveControls()
+                      }
+                    >
+                      {isSavingControls
+                        ? "Saving..."
+                        : "Save Threshold"}
+                    </button>
+
+                    {storeMode === "device" && (
+                      <p className="storage-note">
+                        💾 Saved on this device while
+                        offline mode is active.
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}
 
           {authorityDashboardSection === "complaints" && (
             <div className="dashboard-feature-panel reveal">
-              <div className="dashboard-card">
-                <p>🚨 Priority Complaint</p>
+              {openComplaints.length === 0 ? (
+                <div className="dashboard-card">
+                  <p>🚨 Priority Complaint</p>
 
-                <h2>
-                  Unsafe crowding near entrance
-                </h2>
+                  <h2>No open traveller complaints</h2>
 
-                <div className="dashboard-stat-row">
-                  <span>Location</span>
-                  <strong>Shaniwar Wada</strong>
-                </div>
-
-                <div className="dashboard-stat-row">
-                  <span>Reports</span>
-                  <strong>32</strong>
-                </div>
-
-                <div className="dashboard-stat-row">
-                  <span>Status</span>
-                  <strong>Open</strong>
-                </div>
-
-                <div className="local-request-actions">
-                  <button
-                    type="button"
-                    className="primary-btn"
-                    onClick={() =>
-                      notify(
-                        "Complaint action will be connected to the backend next.",
-                        "info"
-                      )
-                    }
-                  >
-                    Take Action
-                  </button>
+                  <p>
+                    {isLoadingReports
+                      ? "Checking the complaint board…"
+                      : "Cleanliness reports submitted by travellers appear here in priority order."}
+                  </p>
 
                   <button
                     type="button"
                     className="secondary-btn"
-                    onClick={() =>
-                      notify(
-                        "Complaint assignment will be connected to the backend next.",
-                        "info"
-                      )
-                    }
+                    disabled={isLoadingReports}
+                    onClick={() => void refreshReports()}
                   >
-                    Assign Officer
+                    Refresh Complaints
                   </button>
                 </div>
-              </div>
+              ) : (
+                openComplaints.map((report) => (
+                  <div
+                    className="dashboard-card"
+                    key={report.id}
+                  >
+                    <p>
+                      🚨{" "}
+                      {report.status === "open" &&
+                      report.votes >= 200
+                        ? "ESCALATED COMPLAINT"
+                        : "PRIORITY COMPLAINT"}
+                    </p>
+
+                    <h2>{report.problem}</h2>
+
+                    <div className="dashboard-stat-row">
+                      <span>Location</span>
+
+                      <strong>
+                        {report.location ||
+                          "Unspecified"}
+                      </strong>
+                    </div>
+
+                    <div className="dashboard-stat-row">
+                      <span>Traveller reports</span>
+
+                      <strong>{report.votes}</strong>
+                    </div>
+
+                    <div className="dashboard-stat-row">
+                      <span>Status</span>
+
+                      <strong>
+                        <span
+                          className={`status-chip status-${report.status}`}
+                        >
+                          {report.status === "open"
+                            ? "🔴 Open"
+                            : "🟡 In review"}
+                        </span>
+                      </strong>
+                    </div>
+
+                    {report.officer && (
+                      <div className="dashboard-stat-row">
+                        <span>Assigned officer</span>
+
+                        <strong>
+                          👮 {report.officer}
+                        </strong>
+                      </div>
+                    )}
+
+                    <div className="local-request-actions">
+                      <button
+                        type="button"
+                        className="primary-btn"
+                        disabled={
+                          isHandlingComplaintId !==
+                          null
+                        }
+                        onClick={() =>
+                          void handleAdvanceReport(
+                            report
+                          )
+                        }
+                      >
+                        {isHandlingComplaintId ===
+                        report.id
+                          ? "Updating..."
+                          : report.status === "open"
+                          ? "Take Action"
+                          : "Mark Resolved"}
+                      </button>
+                    </div>
+
+                    {!report.officer && (
+                      <div className="inline-form">
+                        <input
+                          type="text"
+                          aria-label="Officer name"
+                          placeholder="Officer name…"
+                          value={
+                            officerDrafts[report.id] ??
+                            ""
+                          }
+                          onChange={(event) =>
+                            setOfficerDrafts(
+                              (current) => ({
+                                ...current,
+                                [report.id]:
+                                  event.target.value,
+                              })
+                            )
+                          }
+                        />
+
+                        <button
+                          type="button"
+                          className="secondary-btn"
+                          disabled={
+                            isHandlingComplaintId !==
+                            null
+                          }
+                          onClick={() =>
+                            void handleAssignOfficer(
+                              report
+                            )
+                          }
+                        >
+                          Assign Officer
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
 
               <div className="dashboard-card">
                 <p>📝 Complaint Summary</p>
@@ -1481,22 +3568,55 @@ function App() {
 
                 <div className="dashboard-stat-row">
                   <span>New</span>
-                  <strong>11</strong>
+
+                  <strong>
+                    {
+                      reports.filter(
+                        (report) =>
+                          report.status === "open"
+                      ).length
+                    }
+                  </strong>
                 </div>
 
                 <div className="dashboard-stat-row">
                   <span>Under review</span>
-                  <strong>7</strong>
+
+                  <strong>
+                    {
+                      reports.filter(
+                        (report) =>
+                          report.status === "in-review"
+                      ).length
+                    }
+                  </strong>
                 </div>
 
                 <div className="dashboard-stat-row">
                   <span>Resolved</span>
-                  <strong>24</strong>
+
+                  <strong>
+                    {
+                      reports.filter(
+                        (report) =>
+                          report.status === "resolved"
+                      ).length
+                    }
+                  </strong>
                 </div>
 
                 <div className="dashboard-stat-row">
                   <span>Escalated</span>
-                  <strong>3</strong>
+
+                  <strong>
+                    {
+                      reports.filter(
+                        (report) =>
+                          report.status === "open" &&
+                          report.votes >= 200
+                      ).length
+                    }
+                  </strong>
                 </div>
               </div>
             </div>
@@ -1504,17 +3624,45 @@ function App() {
 
           {authorityDashboardSection === "safety" && (
             <div className="dashboard-feature-panel reveal">
-              <div className="dashboard-card emergency-alert-card">
-                <p>⚠️ ACTIVE SAFETY ALERT</p>
+              {crowdSpots.filter(isSpotCritical)
+                .length > 0 ? (
+                crowdSpots
+                  .filter(isSpotCritical)
+                  .map((spot) => (
+                    <div
+                      className="dashboard-card emergency-alert-card"
+                      key={spot.name}
+                    >
+                      <p>
+                        ⚠️ ACTIVE SAFETY ALERT
+                      </p>
 
-                <h2>High crowd pressure detected</h2>
+                      <h2>
+                        High crowd pressure detected
+                      </h2>
 
-                <p>
-                  Shaniwar Wada has crossed the current
-                  monitoring threshold. Review personnel
-                  and access controls.
-                </p>
-              </div>
+                      <p>
+                        {spot.name.split(",")[0]} has
+                        crossed the{" "}
+                        {criticalThreshold.toLocaleString()}{" "}
+                        visitor threshold. Review personnel
+                        and access controls.
+                      </p>
+                    </div>
+                  ))
+              ) : (
+                <div className="dashboard-card">
+                  <p>✅ SAFETY STATUS</p>
+
+                  <h2>No active crowd alerts</h2>
+
+                  <p>
+                    All monitored zones are below the{" "}
+                    {criticalThreshold.toLocaleString()}{" "}
+                    visitor threshold.
+                  </p>
+                </div>
+              )}
 
               <div className="dashboard-card">
                 <p>🚔 Police Coordination</p>
@@ -1529,18 +3677,53 @@ function App() {
                   <strong>17</strong>
                 </div>
 
-                <button
-                  type="button"
-                  className="primary-btn"
-                  onClick={() =>
-                    notify(
-                      "Police coordination will be connected to the backend next.",
-                      "info"
-                    )
-                  }
-                >
-                  Coordinate Response →
-                </button>
+                <div className="inline-form">
+                  <p>Coordinate a response</p>
+
+                  <select
+                    aria-label="Unit to coordinate"
+                    value={coordUnit}
+                    onChange={(event) =>
+                      setCoordUnit(event.target.value)
+                    }
+                  >
+                    <option>
+                      Police — nearby units
+                    </option>
+                    <option>
+                      Tourist police marshals
+                    </option>
+                    <option>
+                      Ambulance dispatch
+                    </option>
+                    <option>
+                      Fire response team
+                    </option>
+                  </select>
+
+                  <textarea
+                    rows={3}
+                    aria-label="Instruction for the unit"
+                    placeholder="Instruction / context for the unit…"
+                    value={coordNote}
+                    onChange={(event) =>
+                      setCoordNote(event.target.value)
+                    }
+                  />
+
+                  <button
+                    type="button"
+                    className="primary-btn"
+                    disabled={isLoggingCoord}
+                    onClick={() =>
+                      void handleLogCoordination()
+                    }
+                  >
+                    {isLoggingCoord
+                      ? "Logging..."
+                      : "Coordinate Response →"}
+                  </button>
+                </div>
               </div>
 
               <div className="dashboard-card">
@@ -1559,16 +3742,59 @@ function App() {
                 <button
                   type="button"
                   className="primary-btn"
+                  aria-expanded={showAvailability}
                   onClick={() =>
-                    notify(
-                      "Emergency service coordination will be connected to the backend next.",
-                      "info"
-                    )
+                    setShowAvailability((open) => !open)
                   }
                 >
-                  View Availability →
+                  {showAvailability
+                    ? "Hide Availability"
+                    : "View Availability →"}
                 </button>
+
+                {showAvailability && (
+                  <div className="dashboard-stat-row">
+                    <span>Standby status</span>
+
+                    <strong>
+                      Normal — dispatch ready
+                    </strong>
+                  </div>
+                )}
               </div>
+
+              {showAvailability && (
+                <div className="dashboard-card">
+                  <p>📋 RESPONSE LOG</p>
+
+                  <h2>Recent coordination</h2>
+
+                  {safetyLogs.length === 0 ? (
+                    <p className="panel-note">
+                      No response entries yet —
+                      coordinated actions appear here.
+                    </p>
+                  ) : (
+                    safetyLogs.map((log) => (
+                      <div
+                        className="dashboard-stat-row"
+                        key={log.id}
+                      >
+                        <span>
+                          {log.unit}
+                          {log.createdAt
+                            ? ` • ${new Date(
+                                log.createdAt
+                              ).toLocaleString()}`
+                            : ""}
+                        </span>
+
+                        <strong>{log.note}</strong>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -1621,12 +3847,7 @@ function App() {
                 <button
                   type="button"
                   className="secondary-btn"
-                  onClick={() =>
-                    notify(
-                      "Report export will be connected to backend analytics next.",
-                      "info"
-                    )
-                  }
+                  onClick={handleExportReport}
                 >
                   Export Report →
                 </button>
@@ -1709,15 +3930,26 @@ function App() {
   ) => {
     setLocalDashboardSection(section);
 
+    /* reload requests / chats / reviews when entering them */
+    if (
+      section === "requests" ||
+      section === "chats" ||
+      section === "reviews"
+    ) {
+      void loadProviderWorkspace();
+    }
+
     window.scrollTo({
       top: 0,
       behavior: "smooth",
     });
   };
 
-  const logoutLocalProvider = () => {
+  const logoutLocalProvider = async () => {
     setShowLocalDashboard(false);
     setShowLogin(false);
+
+    await performLogout();
 
     setTimeout(() => {
       document.getElementById("home")?.scrollIntoView({
@@ -1765,14 +3997,7 @@ function App() {
         user
       );
 
-      setShowUserLogin(false);
-      setShowLogin(false);
-      setShowUserDashboard(true);
-
-      window.scrollTo({
-        top: 0,
-        behavior: "smooth",
-      });
+      await completeSignIn(user, "traveller");
     } catch (error) {
       console.error(
         "Email login error:",
@@ -1856,14 +4081,7 @@ function App() {
           user
         );
 
-        setShowUserLogin(false);
-        setShowLogin(false);
-        setShowUserDashboard(true);
-
-        window.scrollTo({
-          top: 0,
-          behavior: "smooth",
-        });
+        await completeSignIn(user, "traveller");
       } catch (error) {
         console.error(
           "Google login error:",
@@ -1937,6 +4155,8 @@ function App() {
           "Apple user:",
           user
         );
+
+        await completeSignIn(user, "traveller");
       } catch (error) {
         console.error(
           "Apple login error:",
@@ -1972,6 +4192,17 @@ function App() {
           errorCode ===
           "auth/cancelled-popup-request"
         ) {
+          return;
+        }
+
+        if (
+          errorCode ===
+          "auth/operation-not-allowed"
+        ) {
+          notify(
+            "Apple sign-in is not enabled for this Firebase project yet — activate the Apple provider under Authentication → Sign-in method.",
+            "info"
+          );
           return;
         }
 
@@ -2035,7 +4266,7 @@ function App() {
           <button
             type="button"
             className="login-btn"
-            onClick={closeLogin}
+            onClick={() => void performLogout()}
           >
             Logout
           </button>
@@ -2126,6 +4357,23 @@ function App() {
               }
             >
               Emergency
+            </button>
+
+            <button
+              type="button"
+              className={
+                dashboardSection === "saved"
+                  ? "dashboard-nav-btn active"
+                  : "dashboard-nav-btn"
+              }
+              aria-current={dashboardSection === "saved" ? "page" : undefined}
+              onClick={() =>
+                openUserDashboardSection(
+                  "saved"
+                )
+              }
+            >
+              Saved
             </button>
           </div>
 
@@ -2401,9 +4649,9 @@ function App() {
                 type="button"
                 className="primary-btn dashboard-plan-btn"
                 onClick={() =>
-                  notify(
-                    "Trip planning tools coming soon!",
-                    "info"
+                  openTripPlanner(
+                    null,
+                    savedTrip ? "route" : "plan"
                   )
                 }
               >
@@ -2433,10 +4681,7 @@ function App() {
                   type="button"
                   className="secondary-btn"
                   onClick={() =>
-                    notify(
-                      "Local homestays are coming next.",
-                      "info"
-                    )
+                    void openBrowse("Homestay")
                   }
                 >
                   Explore Homestays →
@@ -2462,10 +4707,7 @@ function App() {
                   type="button"
                   className="secondary-btn"
                   onClick={() =>
-                    notify(
-                      "Local guides are coming next.",
-                      "info"
-                    )
+                    void openBrowse("Guide")
                   }
                 >
                   Find Guides →
@@ -2491,15 +4733,54 @@ function App() {
                   type="button"
                   className="secondary-btn"
                   onClick={() =>
-                    notify(
-                      "Local arts and crafts are coming next.",
-                      "info"
-                    )
+                    void openBrowse("Arts & Crafts")
                   }
                 >
                   Explore Local Crafts →
                 </button>
               </div>
+
+              {myRequests.length > 0 && (
+                <div className="dashboard-card">
+                  <p>🧳 MY REQUESTS</p>
+
+                  <h2>Request status</h2>
+
+                  {myRequests.map((request) => (
+                    <div
+                      className="dashboard-stat-row"
+                      key={request.id}
+                    >
+                      <span>
+                        {request.providerName}
+                        {request.date
+                          ? ` • ${request.date}`
+                          : ""}
+                      </span>
+
+                      <strong>
+                        <span
+                          className={`status-chip status-${
+                            request.status === "accepted"
+                              ? "accepted"
+                              : request.status ===
+                                "declined"
+                              ? "declined"
+                              : "pending"
+                          }`}
+                        >
+                          {request.status === "pending"
+                            ? "⏳ Pending"
+                            : request.status ===
+                              "accepted"
+                            ? "✓ Accepted"
+                            : "✕ Declined"}
+                        </span>
+                      </strong>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -2514,24 +4795,32 @@ function App() {
                   <input
                     type="text"
                     placeholder="Search a tourist spot..."
-                    defaultValue={
-                      "Shaniwar Wada"
-                    }
+                    aria-label="Search a monitored tourist spot"
+                    value={crowdQuery}
+                    onChange={(event) => {
+                      setCrowdQuery(event.target.value);
+                      setCrowdMessage("");
+                    }}
+                    onKeyDown={handleCrowdKeyDown}
                   />
                 </div>
 
                 <button
                   type="button"
                   className="primary-btn"
-                  onClick={() =>
-                    notify(
-                      "Crowd analysis will be connected to live data next.",
-                      "info"
-                    )
-                  }
+                  onClick={searchCrowdSpot}
                 >
                   Search
                 </button>
+
+                {crowdMessage && (
+                  <small
+                    className="panel-note"
+                    aria-live="polite"
+                  >
+                    {crowdMessage}
+                  </small>
+                )}
               </div>
 
               <div className="dashboard-card">
@@ -2549,7 +4838,7 @@ function App() {
                   </span>
 
                   <strong>
-                    {peopleCount.toLocaleString()}
+                    {crowdStats.people.toLocaleString()}
                   </strong>
                 </div>
 
@@ -2559,7 +4848,7 @@ function App() {
                   </span>
 
                   <strong>
-                    HIGH
+                    {crowdStats.density}
                   </strong>
                 </div>
 
@@ -2569,7 +4858,7 @@ function App() {
                   </span>
 
                   <strong>
-                    Increasing
+                    {crowdStats.trend}
                   </strong>
                 </div>
 
@@ -2579,7 +4868,7 @@ function App() {
                   </span>
 
                   <strong>
-                    25 min
+                    {crowdStats.wait}
                   </strong>
                 </div>
               </div>
@@ -2612,10 +4901,7 @@ function App() {
                   type="button"
                   className="primary-btn"
                   onClick={() =>
-                    notify(
-                      "Route generation will be connected to maps next.",
-                      "info"
-                    )
+                    openTripPlanner(null, "route")
                   }
                 >
                   ✨ Generate My Route
@@ -2635,6 +4921,81 @@ function App() {
                   Problems reported by
                   travellers
                 </h2>
+
+                {isViewingProblems && (
+                  <div className="problem-list">
+                    {reports.length === 0 ? (
+                      <p className="panel-note">
+                        {isLoadingReports
+                          ? "Loading community reports…"
+                          : "No traveller reports stored yet — submit the first one in the form below."}
+                      </p>
+                    ) : (
+                      reports.map((report) => (
+                        <div
+                          className="problem-preview"
+                          key={report.id}
+                        >
+                          <strong>
+                            {report.problem}
+                          </strong>
+
+                          <span>
+                            📍{" "}
+                            {report.location ||
+                              "Unspecified location"}
+                          </span>
+
+                          <span>
+                            👍 {report.votes} vote
+                            {report.votes === 1
+                              ? ""
+                              : "s"}{" "}
+                            •{" "}
+                            <span
+                              className={`status-chip status-${report.status}`}
+                            >
+                              {report.status === "open"
+                                ? "🔴 Open"
+                                : report.status ===
+                                  "in-review"
+                                ? "🟡 In review"
+                                : "🟢 Resolved"}
+                            </span>
+                          </span>
+
+                          {report.officer && (
+                            <span>
+                              👮 Assigned: {report.officer}
+                            </span>
+                          )}
+
+                          <button
+                            type="button"
+                            className="vote-btn"
+                            disabled={isVoting}
+                            aria-pressed={report.voters.includes(
+                              currentUser?.uid ?? ""
+                            )}
+                            onClick={() =>
+                              void handleVoteReport(report)
+                            }
+                          >
+                            {report.voters.includes(
+                              currentUser?.uid ?? ""
+                            )
+                              ? "✓ Voted"
+                              : "👍 Upvote"}
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                <p className="section-label">
+                  Recently highlighted by the community
+                </p>
 
                 <div className="problem-preview">
                   <strong>
@@ -2669,14 +5030,14 @@ function App() {
                 <button
                   type="button"
                   className="secondary-btn"
-                  onClick={() =>
-                    notify(
-                      "The full cleanliness reporting system is coming next.",
-                      "info"
-                    )
-                  }
+                  disabled={isLoadingReports}
+                  onClick={() => void handleViewProblems()}
                 >
-                  View Problems →
+                  {isLoadingReports
+                    ? "Loading..."
+                    : isViewingProblems
+                    ? "Hide Community Board"
+                    : "View Problems →"}
                 </button>
               </div>
 
@@ -2688,29 +5049,42 @@ function App() {
                 <input
                   type="text"
                   placeholder="Problem name"
+                  aria-label="Problem name"
+                  value={reportProblem}
+                  onChange={(event) =>
+                    setReportProblem(event.target.value)
+                  }
                 />
 
                 <input
                   type="text"
                   placeholder="Location"
+                  aria-label="Problem location"
+                  value={reportLocation}
+                  onChange={(event) =>
+                    setReportLocation(event.target.value)
+                  }
                 />
 
                 <textarea
                   placeholder="Describe the problem..."
                   rows={4}
+                  aria-label="Problem details"
+                  value={reportDetails}
+                  onChange={(event) =>
+                    setReportDetails(event.target.value)
+                  }
                 />
 
                 <button
                   type="button"
                   className="primary-btn"
-                  onClick={() =>
-                    notify(
-                      "Problem reporting will be connected to Firebase next.",
-                      "info"
-                    )
-                  }
+                  disabled={isSubmittingReport}
+                  onClick={() => void handleSubmitReport()}
                 >
-                  🚨 Submit Report
+                  {isSubmittingReport
+                    ? "Submitting..."
+                    : "🚨 Submit Report"}
                 </button>
               </div>
             </div>
@@ -2728,9 +5102,9 @@ function App() {
                 </h2>
 
                 <p>
-                  Shaniwar Wada currently has
-                  approximately{" "}
-                  {peopleCount.toLocaleString()}{" "}
+                  {selectedLocation.split(",")[0]}{" "}
+                  currently has approximately{" "}
+                  {crowdStats.people.toLocaleString()}{" "}
                   people.
                 </p>
               </div>
@@ -2746,7 +5120,13 @@ function App() {
                   </strong>
 
                   <span>
-                    0.8 km • 📞 100
+                    0.8 km •{" "}
+                    <a
+                      className="emergency-tel"
+                      href="tel:100"
+                    >
+                      📞 100
+                    </a>
                   </span>
                 </div>
 
@@ -2756,7 +5136,13 @@ function App() {
                   </strong>
 
                   <span>
-                    1.2 km • 📞 108
+                    1.2 km •{" "}
+                    <a
+                      className="emergency-tel"
+                      href="tel:108"
+                    >
+                      📞 108
+                    </a>
                   </span>
                 </div>
 
@@ -2766,7 +5152,13 @@ function App() {
                   </strong>
 
                   <span>
-                    2.0 km • 📞 101
+                    2.0 km •{" "}
+                    <a
+                      className="emergency-tel"
+                      href="tel:101"
+                    >
+                      📞 101
+                    </a>
                   </span>
                 </div>
               </div>
@@ -2782,7 +5174,12 @@ function App() {
                   </span>
 
                   <strong>
-                    100
+                    <a
+                      className="emergency-tel"
+                      href="tel:100"
+                    >
+                      100
+                    </a>
                   </strong>
                 </div>
 
@@ -2792,7 +5189,12 @@ function App() {
                   </span>
 
                   <strong>
-                    108
+                    <a
+                      className="emergency-tel"
+                      href="tel:108"
+                    >
+                      108
+                    </a>
                   </strong>
                 </div>
 
@@ -2802,7 +5204,12 @@ function App() {
                   </span>
 
                   <strong>
-                    101
+                    <a
+                      className="emergency-tel"
+                      href="tel:101"
+                    >
+                      101
+                    </a>
                   </strong>
                 </div>
 
@@ -2812,23 +5219,100 @@ function App() {
                   </span>
 
                   <strong>
-                    1363
+                    <a
+                      className="emergency-tel"
+                      href="tel:1363"
+                    >
+                      1363
+                    </a>
                   </strong>
                 </div>
 
                 <button
                   type="button"
                   className="primary-btn"
-                  onClick={() =>
-                    notify(
-                      "Emergency calling will be connected to device services next.",
-                      "info"
-                    )
-                  }
+                  onClick={handleCallHelp}
                 >
                   🚨 Call for Help
                 </button>
               </div>
+            </div>
+          )}
+          {dashboardSection === "saved" && (
+            <div className="local-request-list reveal">
+              {destinations.filter((entry) =>
+                savedIds.includes(entry.id)
+              ).length === 0 ? (
+                <div className="dashboard-card">
+                  <p>❤️ SAVED PLACES</p>
+
+                  <h2>Nothing saved yet</h2>
+
+                  <p>
+                    Open any destination and tap Save —
+                    it will be waiting for you here.
+                  </p>
+
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={() =>
+                      scrollToSection("destinations")
+                    }
+                  >
+                    Browse Destinations →
+                  </button>
+                </div>
+              ) : (
+                destinations
+                  .filter((entry) =>
+                    savedIds.includes(entry.id)
+                  )
+                  .map((entry) => (
+                    <div
+                      className="dashboard-card local-service-card"
+                      key={entry.id}
+                    >
+                      <span className="dashboard-card-icon">
+                        📍
+                      </span>
+
+                      <p>SAVED DESTINATION</p>
+
+                      <h2>{entry.name}</h2>
+
+                      <p>📍 {entry.location}</p>
+
+                      <p>🗓 {entry.bestTime}</p>
+
+                      <p>⏱ {entry.duration}</p>
+
+                      <div className="local-request-actions">
+                        <button
+                          type="button"
+                          className="primary-btn"
+                          onClick={() =>
+                            openDestination(entry)
+                          }
+                        >
+                          Open
+                        </button>
+
+                        <button
+                          type="button"
+                          className="secondary-btn"
+                          onClick={() =>
+                            void handleToggleSave(
+                              entry.id
+                            )
+                          }
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ))
+              )}
             </div>
           )}
         </main>
@@ -2858,10 +5342,7 @@ function App() {
           <button
             type="button"
             onClick={() =>
-              notify(
-                "Saved places appear here once the backend collection is connected.",
-                "info"
-              )
+              openUserDashboardSection("saved")
             }
           >
             ❤️ Saved
@@ -2870,9 +5351,9 @@ function App() {
           <button
             type="button"
             onClick={() =>
-              notify(
-                "Your trips timeline is coming next.",
-                "info"
+              openTripPlanner(
+                null,
+                savedTrip ? "route" : "plan"
               )
             }
           >
@@ -2890,6 +5371,709 @@ function App() {
             👤 Profile
           </button>
         </footer>
+
+        <ToastStack toasts={toasts} onDismiss={dismissToast} />
+      </div>
+    );
+  }
+
+  /* =========================================================
+     TRIP PLANNER (Plan My Trip / Generate My Route)
+  ========================================================= */
+
+  if (showTripPlanner) {
+    const plannerDestination =
+      destinations.find(
+        (entry) => entry.id === plannerDestId
+      ) ?? destinations[0];
+
+    return (
+      <div className="app user-dashboard-page">
+        <div className="background-glow glow-one" />
+        <div className="background-glow glow-two" />
+
+        <nav className="navbar dashboard-navbar">
+          <button
+            type="button"
+            className="logo logo-button"
+            onClick={() => setShowTripPlanner(false)}
+            aria-label="Back to HostelConnect dashboard"
+          >
+            Hostel<span>Connect</span>
+          </button>
+
+          <div className="dashboard-user-info">
+            <span>✈️ Trip Planner</span>
+          </div>
+
+          <button
+            type="button"
+            className="login-btn"
+            onClick={() => setShowTripPlanner(false)}
+          >
+            ← Dashboard
+          </button>
+        </nav>
+
+        <main className="user-dashboard-content">
+          <div className="dashboard-nav">
+            <button
+              type="button"
+              className={
+                plannerTab === "plan"
+                  ? "dashboard-nav-btn active"
+                  : "dashboard-nav-btn"
+              }
+              aria-current={plannerTab === "plan" ? "page" : undefined}
+              onClick={() => setPlannerTab("plan")}
+            >
+              Plan Trip
+            </button>
+
+            <button
+              type="button"
+              className={
+                plannerTab === "route"
+                  ? "dashboard-nav-btn active"
+                  : "dashboard-nav-btn"
+              }
+              aria-current={plannerTab === "route" ? "page" : undefined}
+              onClick={() => setPlannerTab("route")}
+            >
+              My Route
+            </button>
+          </div>
+
+          <section className="dashboard-heading">
+            <p className="section-label">
+              HOSTELCONNECT • TRIP PLANNER
+            </p>
+
+            <h1>
+              {plannerTab === "plan"
+                ? "Plan My Trip"
+                : "Your Day-by-Day Route"}
+            </h1>
+
+            <p>
+              Built from HostelConnect destination data.
+              {savedTrip
+                ? ` Last saved ${
+                    savedTrip.updatedAt
+                      ? new Date(
+                          savedTrip.updatedAt
+                        ).toLocaleDateString()
+                      : "recently"
+                  }.`
+                : " Nothing saved yet — your plan appears here once saved."}
+            </p>
+          </section>
+
+          {plannerTab === "plan" ? (
+            <>
+              <div className="dashboard-grid reveal">
+                <div className="dashboard-card dashboard-card-wide">
+                  <span className="dashboard-card-icon">
+                    📍
+                  </span>
+
+                  <div>
+                    <p>Destination</p>
+
+                    <select
+                      value={plannerDestId}
+                      onChange={(event) => {
+                        setPlannerDestId(
+                          event.target.value
+                        );
+
+                        const next = destinations.find(
+                          (entry) =>
+                            entry.id === event.target.value
+                        );
+
+                        if (next) {
+                          setPlannerHighlights(
+                            next.highlights.slice(0, 2)
+                          );
+                        }
+                      }}
+                    >
+                      {destinations.map((entry) => (
+                        <option
+                          key={entry.id}
+                          value={entry.id}
+                        >
+                          {entry.name} — {entry.location}
+                        </option>
+                      ))}
+                    </select>
+
+                    <small>
+                      🗓 Best time: {plannerDestination.bestTime}{" "}
+                      • ⏱ Suggested stay:{" "}
+                      {plannerDestination.duration}
+                    </small>
+                  </div>
+                </div>
+
+                <div className="dashboard-card dashboard-card-wide">
+                  <span className="dashboard-card-icon">
+                    🗓️
+                  </span>
+
+                  <div>
+                    <p>Trip Length (days)</p>
+
+                    <input
+                      type="number"
+                      min={1}
+                      max={14}
+                      aria-label="Trip length in days"
+                      value={plannerDays}
+                      onChange={(event) =>
+                        setPlannerDays(
+                          Number(event.target.value) || 1
+                        )
+                      }
+                    />
+
+                    <p>Pace</p>
+
+                    <select
+                      value={plannerPace}
+                      onChange={(event) =>
+                        setPlannerPace(
+                          event.target
+                            .value as ItineraryPace
+                        )
+                      }
+                    >
+                      <option>Relaxed</option>
+                      <option>Balanced</option>
+                      <option>Packed</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="dashboard-card dashboard-card-wide">
+                  <span className="dashboard-card-icon">
+                    📝
+                  </span>
+
+                  <div>
+                    <p>Notes for this trip</p>
+
+                    <textarea
+                      rows={5}
+                      placeholder="Budget reminders, travel companions, accessibility needs..."
+                      aria-label="Trip notes"
+                      value={plannerNotes}
+                      onChange={(event) =>
+                        setPlannerNotes(event.target.value)
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="highlights-section reveal">
+                <p className="section-label">
+                  ACTIVITIES TO INCLUDE
+                </p>
+
+                <h2>
+                  Pick your {plannerDestination.name}{" "}
+                  highlights
+                </h2>
+
+                <div className="highlights-grid">
+                  {plannerDestination.highlights.map(
+                    (highlight) => {
+                      const selected =
+                        plannerHighlights.includes(highlight);
+
+                      return (
+                        <button
+                          type="button"
+                          key={highlight}
+                          className={`highlight-card${
+                            selected ? " is-selected" : ""
+                          }`}
+                          aria-pressed={selected}
+                          onClick={() =>
+                            setPlannerHighlights((current) =>
+                              selected
+                                ? current.filter(
+                                    (entry) =>
+                                      entry !== highlight
+                                  )
+                                : [...current, highlight]
+                            )
+                          }
+                        >
+                          <span>
+                            {selected ? "✓" : "＋"}
+                          </span>
+
+                          <h3>{highlight}</h3>
+                        </button>
+                      );
+                    }
+                  )}
+                </div>
+              </div>
+
+              <div className="planner-actions">
+                <button
+                  type="button"
+                  className="primary-btn"
+                  disabled={isSavingTrip}
+                  onClick={() => void handleSaveTrip(false)}
+                >
+                  {isSavingTrip
+                    ? "Saving..."
+                    : "💾 Save My Plan"}
+                </button>
+
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  disabled={isSavingTrip}
+                  onClick={() => void handleSaveTrip(true)}
+                >
+                  Save &amp; Generate Route →
+                </button>
+
+                {savedTrip && (
+                  <button
+                    type="button"
+                    className="ghost-btn"
+                    onClick={() => void handleDeleteTrip()}
+                  >
+                    Delete Plan
+                  </button>
+                )}
+              </div>
+
+              {storeMode === "device" && (
+                <p className="storage-note">
+                  💾 Currently saving on this device. Deploy
+                  Firestore (see firestore.rules) to sync your
+                  plan across devices.
+                </p>
+              )}
+            </>
+          ) : savedTrip ? (
+            <>
+              <div className="local-request-list reveal">
+                {buildItinerary(savedTrip).map((day) => (
+                  <div
+                    className="dashboard-card itinerary-day"
+                    key={day.label}
+                  >
+                    <p>{day.label}</p>
+
+                    {day.items.map((item, index) => (
+                      <div
+                        className="dashboard-stat-row"
+                        key={`${day.label}-${index}`}
+                      >
+                        <span>
+                          {index === 0
+                            ? "🎯"
+                            : index === day.items.length - 1
+                            ? "🌙"
+                            : "🚶"}
+                        </span>
+
+                        <strong>{item}</strong>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+
+              <div className="planner-actions">
+                <button
+                  type="button"
+                  className="primary-btn"
+                  onClick={handleExportTrip}
+                >
+                  ⬇ Download Itinerary (.txt)
+                </button>
+
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  onClick={() => setPlannerTab("plan")}
+                >
+                  ✏️ Edit Plan
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="dashboard-card reveal">
+              <p>🧭 NO ROUTE YET</p>
+
+              <h2>Save a plan to generate your route</h2>
+
+              <p>
+                HostelConnect arranges your chosen highlights
+                into a day-by-day itinerary from the plan you
+                save here.
+              </p>
+
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={() => setPlannerTab("plan")}
+              >
+                ✨ Plan My Trip →
+              </button>
+            </div>
+          )}
+        </main>
+
+        <ToastStack toasts={toasts} onDismiss={dismissToast} />
+      </div>
+    );
+  }
+
+  /* =========================================================
+     EXPLORE LOCAL PARTNERS
+     (Homestays / Guides / Crafts — real provider listings
+     stored by the Local Provider dashboards)
+  ========================================================= */
+
+  if (browseType) {
+    const normalizedQuery = browseQuery
+      .trim()
+      .toLowerCase();
+
+    const visible = browseItems.filter(
+      (entry) =>
+        !normalizedQuery ||
+        entry.name
+          .toLowerCase()
+          .includes(normalizedQuery) ||
+        entry.location
+          .toLowerCase()
+          .includes(normalizedQuery)
+    );
+
+    const headline =
+      browseType === "Homestay"
+        ? "Explore Homestays"
+        : browseType === "Guide"
+        ? "Find Local Guides"
+        : "Discover Local Crafts";
+
+    return (
+      <div className="app user-dashboard-page">
+        <div className="background-glow glow-one" />
+        <div className="background-glow glow-two" />
+
+        <nav className="navbar dashboard-navbar">
+          <button
+            type="button"
+            className="logo logo-button"
+            onClick={closeBrowse}
+            aria-label="Back to HostelConnect dashboard"
+          >
+            Hostel<span>Connect</span>
+          </button>
+
+          <div className="dashboard-user-info">
+            <span>🤝 Local Connect</span>
+          </div>
+
+          <button
+            type="button"
+            className="login-btn"
+            onClick={closeBrowse}
+          >
+            ← Dashboard
+          </button>
+        </nav>
+
+        <main className="user-dashboard-content">
+          <section className="dashboard-heading">
+            <p className="section-label">
+              HOSTELCONNECT • LOCAL CONNECT
+            </p>
+
+            <h1>{headline}</h1>
+
+            <p>
+              {isBrowseLoading
+                ? "Loading local partners…"
+                : `${visible.length} listing${
+                    visible.length === 1 ? "" : "s"
+                  } from registered HostelConnect providers.`}
+            </p>
+          </section>
+
+          <div className="location-search-wrap">
+            <input
+              type="text"
+              value={browseQuery}
+              onChange={(event) =>
+                setBrowseQuery(event.target.value)
+              }
+              placeholder="Filter by name or location..."
+              aria-label={`Filter ${browseType} listings`}
+            />
+          </div>
+
+          {!isBrowseLoading &&
+            storeMode === "device" &&
+            browseItems.length > 0 && (
+              <p className="storage-note">
+                💾 Listings are served from this device until
+                Firestore is connected.
+              </p>
+            )}
+
+          <div className="local-dashboard-grid reveal">
+            {visible.map((provider) => (
+              <div
+                className="dashboard-card local-service-card"
+                key={provider.uid}
+              >
+                <span className="dashboard-card-icon">
+                  {provider.type === "Homestay"
+                    ? "🏠"
+                    : provider.type === "Guide"
+                    ? "🧑‍🤝‍🧑"
+                    : "🎭"}
+                </span>
+
+                <p>{provider.type}</p>
+
+                <h2>{provider.name}</h2>
+
+                <p>📍 {provider.location}</p>
+
+                <p>
+                  ⭐ {provider.rating}
+                  {provider.reviewCount > 0
+                    ? ` (${provider.reviewCount} review${
+                        provider.reviewCount === 1
+                          ? ""
+                          : "s"
+                      })`
+                    : ""}
+                </p>
+
+                <p>🟢 {provider.availability}</p>
+
+                <strong>{provider.price}</strong>
+
+                {provider.about && <p>{provider.about}</p>}
+
+                <div className="local-request-actions">
+                  <button
+                    type="button"
+                    className="primary-btn"
+                    onClick={() => {
+                      setReviewFormFor(null);
+                      setRequestFormFor(
+                        requestFormFor === provider.uid
+                          ? null
+                          : provider.uid
+                      );
+                    }}
+                  >
+                    {requestFormFor === provider.uid
+                      ? "Close"
+                      : "Request / Message"}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={() => {
+                      setRequestFormFor(null);
+                      setReviewFormFor(
+                        reviewFormFor === provider.uid
+                          ? null
+                          : provider.uid
+                      );
+                    }}
+                  >
+                    ★ Rate
+                  </button>
+                </div>
+
+                {requestFormFor === provider.uid && (
+                  <div className="inline-form">
+                    <p>Date</p>
+
+                    <input
+                      type="date"
+                      aria-label="Requested date"
+                      min={new Date()
+                        .toISOString()
+                        .slice(0, 10)}
+                      value={requestDate}
+                      onChange={(event) =>
+                        setRequestDate(event.target.value)
+                      }
+                    />
+
+                    <p>Guests / party size</p>
+
+                    <input
+                      type="number"
+                      min={1}
+                      max={20}
+                      aria-label="Number of guests"
+                      value={requestGuests}
+                      onChange={(event) =>
+                        setRequestGuests(
+                          Number(event.target.value) || 1
+                        )
+                      }
+                    />
+
+                    <p>Note or message (optional)</p>
+
+                    <input
+                      type="text"
+                      aria-label="Note for the provider"
+                      placeholder="Tell them what you need..."
+                      value={requestNote}
+                      onChange={(event) =>
+                        setRequestNote(event.target.value)
+                      }
+                    />
+
+                    <div className="local-request-actions">
+                      <button
+                        type="button"
+                        className="primary-btn"
+                        disabled={isSendingRequest}
+                        onClick={() =>
+                          void handleSendRequest(provider)
+                        }
+                      >
+                        {isSendingRequest
+                          ? "Sending..."
+                          : "Send Request"}
+                      </button>
+
+                      <button
+                        type="button"
+                        className="secondary-btn"
+                        onClick={() =>
+                          void handleSendMessageToProvider(
+                            provider
+                          )
+                        }
+                      >
+                        Send Message Only
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {reviewFormFor === provider.uid && (
+                  <div className="inline-form">
+                    <p>Your rating</p>
+
+                    <select
+                      aria-label="Star rating"
+                      value={String(reviewRating)}
+                      onChange={(event) =>
+                        setReviewRating(
+                          Number(event.target.value)
+                        )
+                      }
+                    >
+                      {[5, 4, 3, 2, 1].map((stars) => (
+                        <option
+                          key={stars}
+                          value={stars}
+                        >
+                          {"★".repeat(stars)}
+                          {"☆".repeat(5 - stars)}
+                        </option>
+                      ))}
+                    </select>
+
+                    <p>Comment (optional)</p>
+
+                    <textarea
+                      rows={3}
+                      aria-label="Review comment"
+                      placeholder="How was your experience?"
+                      value={reviewText}
+                      onChange={(event) =>
+                        setReviewText(event.target.value)
+                      }
+                    />
+
+                    <button
+                      type="button"
+                      className="primary-btn"
+                      onClick={() =>
+                        void handleAddReview(provider)
+                      }
+                    >
+                      Submit Review
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {isBrowseLoading && (
+              <div className="dashboard-card">
+                <p>LOADING</p>
+
+                <h2>Checking local partner listings…</h2>
+              </div>
+            )}
+
+            {!isBrowseLoading && visible.length === 0 && (
+              <div className="dashboard-card dashboard-card-wide">
+                <p>🤝 {headline.toUpperCase()}</p>
+
+                <h2>
+                  {browseItems.length === 0
+                    ? "No local partners are listed yet"
+                    : "No listings match your filter"}
+                </h2>
+
+                <p>
+                  {browseItems.length === 0
+                    ? `HostelConnect shows real ${
+                        browseType === "Arts & Crafts"
+                          ? "artisan"
+                          : browseType === "Guide"
+                          ? "guide"
+                          : "homestay"
+                      } listings here as soon as local providers
+                      save their profile in the Local Provider
+                      dashboard. No placeholders — real
+                      partners only.`
+                    : "Try a shorter search term or clear the filter."}
+                </p>
+
+                {browseItems.length === 0 && (
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={closeBrowse}
+                  >
+                    ← Back to Dashboard
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </main>
 
         <ToastStack toasts={toasts} onDismiss={dismissToast} />
       </div>
@@ -3000,6 +6184,27 @@ function App() {
                 Chats
               </button>
             )}
+
+            <button
+              type="button"
+              className={
+                localDashboardSection === "reviews"
+                  ? "dashboard-nav-btn active"
+                  : "dashboard-nav-btn"
+              }
+              aria-current={
+                localDashboardSection === "reviews"
+                  ? "page"
+                  : undefined
+              }
+              onClick={() =>
+                openLocalDashboardSection(
+                  "reviews"
+                )
+              }
+            >
+              Reviews
+            </button>
           </div>
 
           <section className="dashboard-heading">
@@ -3112,7 +6317,13 @@ function App() {
                 </strong>
 
                 <small>
-                  Based on traveller reviews
+                  {providerReviewCount > 0
+                    ? `Based on ${providerReviewCount} traveller review${
+                        providerReviewCount === 1
+                          ? ""
+                          : "s"
+                      }`
+                    : "Based on traveller reviews"}
                 </small>
               </div>
 
@@ -3247,28 +6458,25 @@ function App() {
 
                 <textarea
                   rows={6}
-                  defaultValue={
-                    providerType ===
-                    "Homestay"
-                      ? "Comfortable local stay with a genuine regional experience."
-                      : providerType ===
-                        "Guide"
-                      ? "Local guide offering destination knowledge, culture, food, and heritage experiences."
-                      : "Locally made products and authentic craftsmanship for travellers."
+                  aria-label="About your service"
+                  placeholder="Describe your service for travellers…"
+                  value={providerAbout}
+                  onChange={(event) =>
+                    setProviderAbout(event.target.value)
                   }
                 />
 
                 <button
                   type="button"
                   className="primary-btn"
+                  disabled={isSavingProvider}
                   onClick={() =>
-                    notify(
-                      "Service details saved locally. Backend sync will be connected by your backend team.",
-                      "success"
-                    )
+                    void handleSaveProviderProfile()
                   }
                 >
-                  Save Details
+                  {isSavingProvider
+                    ? "Saving..."
+                    : "Save Details"}
                 </button>
               </div>
             </div>
@@ -3277,88 +6485,185 @@ function App() {
           {localDashboardSection ===
             "requests" && (
             <div className="local-request-list reveal">
-              <div className="dashboard-card">
-                <p>
-                  NEW TRAVELLER REQUEST
-                </p>
+              {providerRequests.length === 0 ? (
+                <div className="dashboard-card">
+                  <p>
+                    NEW TRAVELLER REQUEST
+                  </p>
 
-                <h2>
-                  👤 Traveller from Pune
-                </h2>
+                  <h2>
+                    No requests yet
+                  </h2>
 
-                <div className="dashboard-stat-row">
-                  <span>
-                    📅 Date
-                  </span>
-
-                  <strong>
-                    18 Sept 2026
-                  </strong>
-                </div>
-
-                <div className="dashboard-stat-row">
-                  <span>
-                    👥 Guests
-                  </span>
-
-                  <strong>
-                    2
-                  </strong>
-                </div>
-
-                <div className="dashboard-stat-row">
-                  <span>
-                    📍 Location
-                  </span>
-
-                  <strong>
-                    {providerLocation}
-                  </strong>
-                </div>
-
-                <div className="local-request-actions">
-                  <button
-                    type="button"
-                    className="primary-btn"
-                    onClick={() =>
-                      notify(
-                        "Request accepted. Backend request management will be connected next.",
-                        "info"
-                      )
-                    }
-                  >
-                    Accept
-                  </button>
+                  <p>
+                    {isLoadingRequests
+                      ? "Checking for new traveller requests…"
+                      : "When a traveller sends a request from Explore, it lands here with their dates, party size, and note."}
+                  </p>
 
                   <button
                     type="button"
                     className="secondary-btn"
                     onClick={() =>
-                      notify(
-                        "Request declined. Backend request management will be connected next.",
-                        "info"
-                      )
+                      void loadProviderWorkspace()
                     }
                   >
-                    Decline
+                    Refresh Requests
                   </button>
-
-                  {providerType !==
-                    "Arts & Crafts" && (
-                    <button
-                      type="button"
-                      className="secondary-btn"
-                      onClick={() =>
-                        openLocalDashboardSection(
-                          "chats"
-                        )
-                      }
-                    >
-                      Chat
-                    </button>
-                  )}
                 </div>
-              </div>
+              ) : (
+                providerRequests.map((request) => (
+                  <div
+                    className="dashboard-card"
+                    key={request.id}
+                  >
+                    <p>
+                      {request.status === "pending"
+                        ? "NEW TRAVELLER REQUEST"
+                        : "TRAVELLER REQUEST"}
+                    </p>
+
+                    <h2>
+                      👤 {request.travellerName}
+                    </h2>
+
+                    <div className="dashboard-stat-row">
+                      <span>
+                        📅 Date
+                      </span>
+
+                      <strong>
+                        {request.date}
+                      </strong>
+                    </div>
+
+                    <div className="dashboard-stat-row">
+                      <span>
+                        👥 Guests
+                      </span>
+
+                      <strong>
+                        {request.guests}
+                      </strong>
+                    </div>
+
+                    <div className="dashboard-stat-row">
+                      <span>
+                        ✉️ Traveller
+                      </span>
+
+                      <strong>
+                        {request.travellerEmail ||
+                          "—"}
+                      </strong>
+                    </div>
+
+                    {request.note && (
+                      <div className="dashboard-stat-row">
+                        <span>
+                          📝 Note
+                        </span>
+
+                        <strong>
+                          {request.note}
+                        </strong>
+                      </div>
+                    )}
+
+                    <div className="dashboard-stat-row">
+                      <span>
+                        Status
+                      </span>
+
+                      <strong>
+                        <span
+                          className={`status-chip status-${request.status}`}
+                        >
+                          {request.status === "pending"
+                            ? "⏳ Pending"
+                            : request.status ===
+                              "accepted"
+                            ? "✓ Accepted"
+                            : "✕ Declined"}
+                        </span>
+                      </strong>
+                    </div>
+
+                    {request.status ===
+                      "pending" && (
+                      <div className="local-request-actions">
+                        <button
+                          type="button"
+                          className="primary-btn"
+                          disabled={
+                            isHandlingRequestId !==
+                            null
+                          }
+                          onClick={() =>
+                            void handleRequestDecision(
+                              request,
+                              "accepted"
+                            )
+                          }
+                        >
+                          {isHandlingRequestId ===
+                          request.id
+                            ? "Updating..."
+                            : "Accept"}
+                        </button>
+
+                        <button
+                          type="button"
+                          className="secondary-btn"
+                          disabled={
+                            isHandlingRequestId !==
+                            null
+                          }
+                          onClick={() =>
+                            void handleRequestDecision(
+                              request,
+                              "declined"
+                            )
+                          }
+                        >
+                          Decline
+                        </button>
+
+                        {providerType !==
+                          "Arts & Crafts" &&
+                          request.travellerUid && (
+                          <button
+                            type="button"
+                            className="secondary-btn"
+                            onClick={() => {
+                              const threadId =
+                                store.directThreadId(
+                                  currentUser?.uid ??
+                                    "",
+                                  request.travellerUid
+                                );
+
+                              setActiveThreadId(
+                                threadId
+                              );
+
+                              openLocalDashboardSection(
+                                "chats"
+                              );
+
+                              void openChatThread(
+                                threadId
+                              );
+                            }}
+                          >
+                            Chat
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
 
               <div className="dashboard-card">
                 <p>
@@ -3375,7 +6680,12 @@ function App() {
                   </span>
 
                   <strong>
-                    3
+                    {
+                      providerRequests.filter(
+                        (request) =>
+                          request.status === "pending"
+                      ).length
+                    }
                   </strong>
                 </div>
 
@@ -3385,7 +6695,18 @@ function App() {
                   </span>
 
                   <strong>
-                    12
+                    {
+                      providerRequests.filter(
+                        (request) =>
+                          request.status ===
+                            "accepted" &&
+                          request.createdAt.startsWith(
+                            new Date()
+                              .toISOString()
+                              .slice(0, 7)
+                          )
+                      ).length
+                    }
                   </strong>
                 </div>
 
@@ -3413,36 +6734,178 @@ function App() {
                   </p>
 
                   <h2>
-                    Traveller Support Chat
+                    {activeThread
+                      ? `Traveller: ${activeThread.travellerName}`
+                      : "Traveller Support Chat"}
                   </h2>
 
-                  <p>
-                    A traveller can contact you
-                    here about availability,
-                    directions, services, and
-                    booking questions.
-                  </p>
+                  {providerThreads.length > 0 && (
+                    <div className="thread-picker">
+                      {providerThreads.map((thread) => (
+                        <button
+                          key={thread.id}
+                          type="button"
+                          className={
+                            activeThreadId === thread.id
+                              ? "dashboard-nav-btn active"
+                              : "dashboard-nav-btn"
+                          }
+                          aria-current={
+                            activeThreadId === thread.id
+                              ? "true"
+                              : undefined
+                          }
+                          onClick={() =>
+                            void openChatThread(
+                              thread.id
+                            )
+                          }
+                        >
+                          {thread.travellerName}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {providerThreads.length === 0 ? (
+                    <p className="panel-note">
+                      No conversations yet. Travellers
+                      can message you when they request
+                      your service from the Explore
+                      pages.
+                    </p>
+                  ) : !activeThreadId ? (
+                    <p className="panel-note">
+                      Pick a conversation above to read
+                      and reply.
+                    </p>
+                  ) : (
+                    <div className="chat-thread">
+                      {threadMessages.map((message) => (
+                        <div
+                          key={message.id}
+                          className={`chat-bubble ${
+                            message.from === "provider"
+                              ? "chat-out"
+                              : "chat-in"
+                          }`}
+                        >
+                          <strong>{message.name}</strong>
+
+                          <p>{message.text}</p>
+
+                          {message.createdAt && (
+                            <small>
+                              {new Date(
+                                message.createdAt
+                              ).toLocaleString()}
+                            </small>
+                          )}
+                        </div>
+                      ))}
+
+                      {threadMessages.length === 0 && (
+                        <p className="panel-note">
+                          No messages yet — say
+                          hello.
+                        </p>
+                      )}
+                    </div>
+                  )}
 
                   <textarea
                     rows={5}
+                    aria-label="Chat message"
                     placeholder="Type a message..."
+                    value={chatDraft}
+                    onChange={(event) =>
+                      setChatDraft(event.target.value)
+                    }
                   />
 
                   <button
                     type="button"
                     className="primary-btn"
-                    onClick={() =>
-                      notify(
-                        "Message sending will be connected to the backend next.",
-                        "info"
-                      )
+                    disabled={
+                      isSendingChat || !activeThreadId
                     }
+                    onClick={() => void handleSendChat()}
                   >
-                    Send Message →
+                    {isSendingChat
+                      ? "Sending..."
+                      : "Send Message →"}
                   </button>
                 </div>
               </div>
             )}
+          {localDashboardSection ===
+            "reviews" && (
+            <div className="local-request-list reveal">
+              <div className="dashboard-card">
+                <p>
+                  ⭐ TRAVELLER REVIEWS
+                </p>
+
+                <h2>
+                  {providerRating} / 5
+                  {providerReviewCount > 0
+                    ? ` • ${providerReviewCount} review${
+                        providerReviewCount === 1
+                          ? ""
+                          : "s"
+                      }`
+                    : " • no reviews yet"}
+                </h2>
+
+                {providerReviews.length === 0 ? (
+                  <p className="panel-note">
+                    Travellers can rate you from the
+                    Homestays, Guides, and Crafts pages
+                    — reviews appear here
+                    automatically.
+                  </p>
+                ) : (
+                  providerReviews.map((review) => (
+                    <div
+                      className="review-row"
+                      key={review.id}
+                    >
+                      <strong>
+                        {"★".repeat(review.rating)}
+                        {"☆".repeat(
+                          5 - review.rating
+                        )}
+                      </strong>
+
+                      <p>
+                        {review.text || "(no comment)"}
+                      </p>
+
+                      <small>
+                        {review.travellerEmail ||
+                          "Traveller"}
+                        {review.createdAt
+                          ? ` • ${new Date(
+                              review.createdAt
+                            ).toLocaleDateString()}`
+                          : ""}
+                      </small>
+                    </div>
+                  ))
+                )}
+
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  onClick={() =>
+                    void loadProviderWorkspace()
+                  }
+                >
+                  Refresh Reviews
+                </button>
+              </div>
+            </div>
+          )}
         </main>
 
         <footer
@@ -3472,9 +6935,8 @@ function App() {
           <button
             type="button"
             onClick={() =>
-              notify(
-                "Traveller reviews will be connected with the backend next.",
-                "info"
+              openLocalDashboardSection(
+                "reviews"
               )
             }
           >
@@ -3609,9 +7071,8 @@ function App() {
                 type="button"
                 className="forgot-password"
                 onClick={() =>
-                  notify(
-                    "Authority password recovery will be available soon.",
-                    "info"
+                  void handleForgotPassword(
+                    authorityEmail
                   )
                 }
               >
@@ -3755,9 +7216,8 @@ function App() {
                 type="button"
                 className="forgot-password"
                 onClick={() =>
-                  notify(
-                    "Password recovery will be available soon.",
-                    "info"
+                  void handleForgotPassword(
+                    localEmail
                   )
                 }
               >
@@ -3902,10 +7362,7 @@ function App() {
                 type="button"
                 className="forgot-password"
                 onClick={() =>
-                  notify(
-                    "Password recovery will be available soon.",
-                    "info"
-                  )
+                  void handleForgotPassword(userEmail)
                 }
               >
                 Forgot password?
@@ -3960,12 +7417,7 @@ function App() {
             <button
               type="button"
               className="secondary-btn guest-login-btn"
-              onClick={() =>
-                notify(
-                  "Guest exploration will be available soon.",
-                  "info"
-                )
-              }
+              onClick={enterGuestMode}
             >
               Continue as Guest
             </button>
@@ -3974,14 +7426,172 @@ function App() {
               New to HostelConnect?{" "}
               <button
                 type="button"
-                onClick={() =>
-                  notify(
-                    "Account registration will be available soon.",
-                    "info"
+                onClick={openRegister}
+              >
+                Create an account
+              </button>
+            </p>
+          </form>
+        </main>
+
+        <ToastStack toasts={toasts} onDismiss={dismissToast} />
+      </div>
+    );
+  }
+
+  /* =========================================================
+     REGISTER PAGE
+     Creates a real Firebase Auth account and stores the
+     chosen role in Firestore (users/{uid}).
+  ========================================================= */
+
+  if (showRegister) {
+    return (
+      <div className="app login-page user-login-page">
+        <div className="background-glow glow-one" />
+        <div className="background-glow glow-two" />
+
+        <nav className="navbar login-navbar">
+          <button
+            type="button"
+            className="logo logo-button"
+            onClick={closeLogin}
+            aria-label="Back to HostelConnect home"
+          >
+            Hostel<span>Connect</span>
+          </button>
+
+          <button
+            type="button"
+            className="login-back-button"
+            onClick={closeRegister}
+          >
+            ← Back
+          </button>
+        </nav>
+
+        <main className="user-login-content">
+          <div className="user-login-heading">
+            <div className="user-login-icon">
+              ✨
+            </div>
+
+            <p className="tag">
+              JOIN HOSTELCONNECT
+            </p>
+
+            <h1>
+              Create your{" "}
+              <span>account.</span>
+            </h1>
+
+            <p>
+              One account for trips, local
+              partners, and safety features.
+            </p>
+          </div>
+
+          <form
+            className="user-login-card"
+            onSubmit={handleRegister}
+          >
+            <div className="login-input-group">
+              <label htmlFor="register-name">
+                Full Name
+              </label>
+
+              <input
+                id="register-name"
+                type="text"
+                placeholder="Your name"
+                value={registerName}
+                onChange={(event) =>
+                  setRegisterName(
+                    event.target.value
+                  )
+                }
+                autoComplete="name"
+              />
+            </div>
+
+            <div className="login-input-group">
+              <label htmlFor="register-email">
+                Email Address
+              </label>
+
+              <input
+                id="register-email"
+                type="email"
+                placeholder="you@example.com"
+                value={registerEmail}
+                onChange={(event) =>
+                  setRegisterEmail(
+                    event.target.value
+                  )
+                }
+                autoComplete="email"
+              />
+            </div>
+
+            <PasswordField
+              id="register-password"
+              label="Password"
+              placeholder="At least 6 characters"
+              value={registerPassword}
+              onChange={setRegisterPassword}
+            />
+
+            <div className="login-input-group">
+              <label htmlFor="register-role">
+                I am joining as
+              </label>
+
+              <select
+                id="register-role"
+                className="glass-input"
+                value={registerRole}
+                onChange={(event) =>
+                  setRegisterRole(
+                    event.target
+                      .value as store.UserRole
                   )
                 }
               >
-                Create an account
+                <option value="traveller">
+                  Traveller
+                </option>
+                <option value="provider">
+                  Local Provider
+                </option>
+                <option value="authority">
+                  Authority
+                </option>
+              </select>
+            </div>
+
+            {registerError && (
+              <p className="field-error" role="alert">
+                {registerError}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              className="primary-btn user-login-submit"
+              disabled={isRegistering}
+            >
+              {isRegistering
+                ? "Creating account..."
+                : "Create Account →"}
+            </button>
+
+            <p className="login-register-text">
+              Already registered?{" "}
+              <button
+                type="button"
+                onClick={closeRegister}
+              >
+                Sign in
               </button>
             </p>
           </form>
@@ -4192,6 +7802,7 @@ function App() {
               ), url("${selectedDestination.image}")`,
             }}
           >
+            <div className="destination-hero-actions">
             <button
               type="button"
               className="back-btn"
@@ -4200,6 +7811,28 @@ function App() {
             >
               ← Back to destinations
             </button>
+
+            <button
+              type="button"
+              className={`back-btn destination-save-btn${
+                savedIds.includes(selectedDestination.id)
+                  ? " is-saved"
+                  : ""
+              }`}
+              aria-pressed={savedIds.includes(
+                selectedDestination.id
+              )}
+              onClick={() =>
+                void handleToggleSave(
+                  selectedDestination.id
+                )
+              }
+            >
+              {savedIds.includes(selectedDestination.id)
+                ? "♥ Saved"
+                : "♡ Save"}
+            </button>
+            </div>
 
             <div className="destination-hero-content">
               <p className="tag">
@@ -4349,9 +7982,9 @@ function App() {
                 type="button"
                 className="primary-btn"
                 onClick={() =>
-                  notify(
-                    `Your ${selectedDestination.name} trip planner is coming soon!`,
-                    "info"
+                  openTripPlanner(
+                    selectedDestination,
+                    "plan"
                   )
                 }
               >
@@ -4519,6 +8152,43 @@ function App() {
           </div>
         )}
       </nav>
+
+      {isGuest && !currentUser && (
+        <div className="guest-bar" role="status">
+          <span>
+            👋 You are exploring as a guest — public
+            destinations only.
+          </span>
+
+          <div className="guest-bar-actions">
+            <button
+              type="button"
+              className="login-btn"
+              onClick={openLogin}
+            >
+              Sign In
+            </button>
+
+            <button
+              type="button"
+              className="ghost-btn"
+              onClick={() => {
+                setIsGuest(false);
+
+                try {
+                  window.sessionStorage.removeItem(
+                    "hostelconnect.guest"
+                  );
+                } catch {
+                  /* nothing else to clear */
+                }
+              }}
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* HERO SECTION */}
 

@@ -1,0 +1,108 @@
+rules_version = '2';
+
+/* =========================================================
+   HostelConnect — Firestore security rules
+   ---------------------------------------------------------
+   The client in client/src/store.ts talks to Firestore with
+   these collections. Deploy with:
+
+     firebase deploy --only firestore:rules
+
+   (after `firebase apps:sdkconfig` / firebase init in a
+   Firebase CLI project pointing at travelboost-19a1f)
+
+   Roles live in users/{uid}.role ("traveller" | "provider"
+   | "authority"). Clients may show portals based on role,
+   but these rules are the actual enforcement layer.
+========================================================= */
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function roleIs(role) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == role;
+    }
+
+    /* profile docs: own account readable/writable by its owner,
+       authority may audit */
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow create, update: if signedIn()
+        && (request.auth.uid == uid || roleIs('authority'));
+    }
+
+    /* provider listings are public to browse; owners publish */
+    match /providers/{uid} {
+      allow read: if true;
+      allow write: if signedIn() && request.auth.uid == uid;
+    }
+
+    match /trips/{uid} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
+    match /saves/{uid} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
+    /* traveller reports / authority complaints */
+    match /reports/{reportId} {
+      allow read: if true;
+      allow create: if signedIn()
+        && request.resource.data.reporterUid == request.auth.uid;
+      allow update: if signedIn()
+        && (resource.data.reporterUid == request.auth.uid || roleIs('authority'));
+      allow delete: if roleIs('authority');
+    }
+
+    /* booking / service requests */
+    match /requests/{requestId} {
+      allow read: if signedIn()
+        && (resource.data.travellerUid == request.auth.uid
+            || resource.data.providerUid == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.travellerUid == request.auth.uid;
+      allow update: if signedIn()
+        && resource.data.providerUid == request.auth.uid;
+      allow delete: if false;
+    }
+
+    /* reviews: public to read, traveller-owned writes only */
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if signedIn()
+        && request.resource.data.travellerUid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    /* chat: participants only — thread id is
+       "<uidA>__<uidB>", so membership check suffices */
+    match /chats/{threadId} {
+      allow read, write: if signedIn()
+        && request.auth.uid in threadId.split('__');
+    }
+
+    match /chats/{threadId}/messages/{messageId} {
+      allow read, create: if signedIn()
+        && request.auth.uid in threadId.split('__');
+      allow update, delete: if false;
+    }
+
+    /* authority settings + safety log */
+    match /settings/authority {
+      allow read: if true;
+      allow write: if roleIs('authority');
+    }
+
+    match /safetyLogs/{logId} {
+      allow read: if signedIn();
+      allow create: if roleIs('authority');
+      allow update, delete: if false;
+    }
+  }
+}
