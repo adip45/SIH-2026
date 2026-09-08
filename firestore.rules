@@ -1,7 +1,7 @@
 rules_version = '2';
 
 /* =========================================================
-   HostelConnect — Firestore security rules
+   TravelBoost — Firestore security rules
    ---------------------------------------------------------
    The client in client/src/store.ts talks to Firestore with
    these collections. Deploy with:

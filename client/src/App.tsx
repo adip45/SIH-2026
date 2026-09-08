@@ -583,7 +583,7 @@ function App() {
     try {
       return (
         window.sessionStorage.getItem(
-          "hostelconnect.guest"
+          "travelboost.guest"
         ) === "1"
       );
     } catch {
@@ -867,7 +867,7 @@ function App() {
     useState("profile");
 
   const [providerName, setProviderName] =
-    useState("HostelConnect Local Partner");
+    useState("TravelBoost Local Partner");
 
   const [providerLocation, setProviderLocation] =
     useState("Pune, Maharashtra");
@@ -1232,7 +1232,7 @@ function App() {
 
       try {
         window.sessionStorage.removeItem(
-          "hostelconnect.guest"
+          "travelboost.guest"
         );
       } catch {
         /* private mode — in-memory flag still clears */
@@ -1390,7 +1390,7 @@ function App() {
       const user = result.user;
 
       notify(
-        `Welcome back to HostelConnect!\nLogged in as ${
+        `Welcome back to TravelBoost!\nLogged in as ${
           user.email || localEmail
         }`,
         "success"
@@ -1445,7 +1445,7 @@ function App() {
         const user = result.user;
 
         notify(
-          `Welcome to HostelConnect, ${
+          `Welcome to TravelBoost, ${
             user.displayName ||
             user.email ||
             "Local Provider"
@@ -1545,7 +1545,7 @@ function App() {
       const user = result.user;
 
       notify(
-        `Welcome to HostelConnect Authority Portal!\nLogged in as ${
+        `Welcome to TravelBoost Authority Portal!\nLogged in as ${
           user.email || authorityEmail
         }`,
         "success"
@@ -1600,7 +1600,7 @@ function App() {
         const user = result.user;
 
         notify(
-          `Welcome to the HostelConnect Authority Portal, ${
+          `Welcome to the TravelBoost Authority Portal, ${
             user.displayName ||
             user.email ||
             "Authority User"
@@ -1733,7 +1733,7 @@ function App() {
       await signOut(auth);
 
       notify(
-        "You have been signed out of HostelConnect.",
+        "You have been signed out of TravelBoost.",
         "info"
       );
     } catch {
@@ -1806,7 +1806,7 @@ function App() {
 
     try {
       window.sessionStorage.setItem(
-        "hostelconnect.guest",
+        "travelboost.guest",
         "1"
       );
     } catch {
@@ -1904,7 +1904,7 @@ function App() {
       );
 
       notify(
-        `Account created — welcome to HostelConnect, ${name}!`,
+        `Account created — welcome to TravelBoost, ${name}!`,
         "success"
       );
 
@@ -1971,7 +1971,7 @@ function App() {
 
     if (!spot) {
       setCrowdMessage(
-        `"${query}" is not on the HostelConnect watchlist yet. Try Shaniwar Wada, Aga Khan Palace, Sinhagad Fort, Lal Mahal, Manali, Goa, Jaipur, or Kerala.`
+        `"${query}" is not on the TravelBoost watchlist yet. Try Shaniwar Wada, Aga Khan Palace, Sinhagad Fort, Lal Mahal, Manali, Goa, Jaipur, or Kerala.`
       );
       return;
     }
@@ -2056,7 +2056,7 @@ function App() {
 
     if (tab === "route" && !savedTrip) {
       notify(
-        "Save a plan first — HostelConnect turns it into a day-by-day route.",
+        "Save a plan first — TravelBoost turns it into a day-by-day route.",
         "info"
       );
     }
@@ -2111,7 +2111,7 @@ function App() {
 
       notify(
         store.getStoreMode() === "cloud"
-          ? "Trip saved to your HostelConnect account."
+          ? "Trip saved to your TravelBoost account."
           : "Trip saved on this device — connect Firestore to sync across devices.",
         "success"
       );
@@ -2237,7 +2237,7 @@ function App() {
     const itinerary = buildItinerary(savedTrip);
 
     const lines = [
-      `HostelConnect — ${savedTrip.destinationName} itinerary`,
+      `TravelBoost — ${savedTrip.destinationName} itinerary`,
       `${savedTrip.days} days • ${savedTrip.pace} pace${
         savedTrip.updatedAt
           ? ` • updated ${new Date(
@@ -2254,7 +2254,7 @@ function App() {
     ];
 
     downloadTextFile(
-      `hostelconnect-${savedTrip.destinationId}-itinerary.txt`,
+      `travelboost-${savedTrip.destinationId}-itinerary.txt`,
       "text/plain;charset=utf-8",
       lines.join("\n")
     );
@@ -2501,7 +2501,7 @@ function App() {
 
       notify(
         ids.includes(destinationId)
-          ? "Saved to your HostelConnect places."
+          ? "Saved to your TravelBoost places."
           : "Removed from your saved places.",
         "success"
       );
@@ -3006,7 +3006,7 @@ function App() {
       hour >= 10 && hour <= 17 ? 1 : 0.55;
 
     const rows = [
-      "HostelConnect Authority Report",
+      "TravelBoost Authority Report",
       `Generated,"${new Date().toLocaleString()}"`,
       `Critical threshold,"${criticalThreshold}"`,
       "",
@@ -3055,7 +3055,7 @@ function App() {
     ];
 
     downloadTextFile(
-      `hostelconnect-authority-report-${new Date()
+      `travelboost-authority-report-${new Date()
         .toISOString()
         .slice(0, 10)}.csv`,
       "text/csv;charset=utf-8",
@@ -3123,7 +3123,7 @@ function App() {
     return (
       <div
         className="app user-dashboard-page authority-dashboard-page"
-        aria-label="HostelConnect authority dashboard"
+        aria-label="TravelBoost authority dashboard"
       >
         <div className="background-glow glow-one" />
         <div className="background-glow glow-two" />
@@ -3133,9 +3133,9 @@ function App() {
             type="button"
             className="logo logo-button"
             onClick={logoutAuthority}
-            aria-label="Back to HostelConnect home"
+            aria-label="Back to TravelBoost home"
           >
-            Hostel<span>Connect</span>
+            Travel<span>Boost</span>
           </button>
 
           <div className="dashboard-user-info">
@@ -3184,7 +3184,7 @@ function App() {
 
           <section className="dashboard-heading">
             <p className="section-label">
-              HOSTELCONNECT • AUTHORITY PORTAL
+              TRAVELBOOST • AUTHORITY PORTAL
             </p>
 
             <h1>{authorityDashboardTitle}</h1>
@@ -3986,7 +3986,7 @@ function App() {
       const user = result.user;
 
       notify(
-        `Welcome back to HostelConnect!\nLogged in as ${
+        `Welcome back to TravelBoost!\nLogged in as ${
           user.email || userEmail
         }`,
         "success"
@@ -4068,7 +4068,7 @@ function App() {
         const user = result.user;
 
         notify(
-          `Welcome to HostelConnect, ${
+          `Welcome to TravelBoost, ${
             user.displayName ||
             user.email ||
             "Traveller"
@@ -4143,7 +4143,7 @@ function App() {
         const user = result.user;
 
         notify(
-          `Welcome to HostelConnect, ${
+          `Welcome to TravelBoost, ${
             user.displayName ||
             user.email ||
             "Traveller"
@@ -4254,9 +4254,9 @@ function App() {
             type="button"
             className="logo logo-button"
             onClick={closeLogin}
-            aria-label="Back to HostelConnect home"
+            aria-label="Back to TravelBoost home"
           >
-            Hostel<span>Connect</span>
+            Travel<span>Boost</span>
           </button>
 
           <div className="dashboard-user-info">
@@ -4379,7 +4379,7 @@ function App() {
 
           <section className="dashboard-heading">
             <p className="section-label">
-              HOSTELCONNECT • PERSONAL DASHBOARD
+              TRAVELBOOST • PERSONAL DASHBOARD
             </p>
 
             <h1>{dashboardTitle}</h1>
@@ -4620,7 +4620,7 @@ function App() {
                 <p className="ai-recommendation-text">
                   Based on your location,
                   interests, budget, and current
-                  crowd levels, HostelConnect
+                  crowd levels, TravelBoost
                   recommends exploring nearby
                   attractions before visiting the
                   busiest spots.
@@ -5397,9 +5397,9 @@ function App() {
             type="button"
             className="logo logo-button"
             onClick={() => setShowTripPlanner(false)}
-            aria-label="Back to HostelConnect dashboard"
+            aria-label="Back to TravelBoost dashboard"
           >
-            Hostel<span>Connect</span>
+            Travel<span>Boost</span>
           </button>
 
           <div className="dashboard-user-info">
@@ -5446,7 +5446,7 @@ function App() {
 
           <section className="dashboard-heading">
             <p className="section-label">
-              HOSTELCONNECT • TRIP PLANNER
+              TRAVELBOOST • TRIP PLANNER
             </p>
 
             <h1>
@@ -5456,7 +5456,7 @@ function App() {
             </h1>
 
             <p>
-              Built from HostelConnect destination data.
+              Built from TravelBoost destination data.
               {savedTrip
                 ? ` Last saved ${
                     savedTrip.updatedAt
@@ -5719,7 +5719,7 @@ function App() {
               <h2>Save a plan to generate your route</h2>
 
               <p>
-                HostelConnect arranges your chosen highlights
+                TravelBoost arranges your chosen highlights
                 into a day-by-day itinerary from the plan you
                 save here.
               </p>
@@ -5779,9 +5779,9 @@ function App() {
             type="button"
             className="logo logo-button"
             onClick={closeBrowse}
-            aria-label="Back to HostelConnect dashboard"
+            aria-label="Back to TravelBoost dashboard"
           >
-            Hostel<span>Connect</span>
+            Travel<span>Boost</span>
           </button>
 
           <div className="dashboard-user-info">
@@ -5800,7 +5800,7 @@ function App() {
         <main className="user-dashboard-content">
           <section className="dashboard-heading">
             <p className="section-label">
-              HOSTELCONNECT • LOCAL CONNECT
+              TRAVELBOOST • LOCAL CONNECT
             </p>
 
             <h1>{headline}</h1>
@@ -5810,7 +5810,7 @@ function App() {
                 ? "Loading local partners…"
                 : `${visible.length} listing${
                     visible.length === 1 ? "" : "s"
-                  } from registered HostelConnect providers.`}
+                  } from registered TravelBoost providers.`}
             </p>
           </section>
 
@@ -6048,7 +6048,7 @@ function App() {
 
                 <p>
                   {browseItems.length === 0
-                    ? `HostelConnect shows real ${
+                    ? `TravelBoost shows real ${
                         browseType === "Arts & Crafts"
                           ? "artisan"
                           : browseType === "Guide"
@@ -6095,9 +6095,9 @@ function App() {
             type="button"
             className="logo logo-button"
             onClick={logoutLocalProvider}
-            aria-label="Back to HostelConnect home"
+            aria-label="Back to TravelBoost home"
           >
-            Hostel<span>Connect</span>
+            Travel<span>Boost</span>
           </button>
 
           <div className="dashboard-user-info">
@@ -6209,7 +6209,7 @@ function App() {
 
           <section className="dashboard-heading">
             <p className="section-label">
-              HOSTELCONNECT • LOCAL PROVIDER
+              TRAVELBOOST • LOCAL PROVIDER
             </p>
 
             <h1>
@@ -6226,7 +6226,7 @@ function App() {
             </h1>
 
             <p>
-              Manage your HostelConnect local provider
+              Manage your TravelBoost local provider
               profile and traveller activity.
             </p>
           </section>
@@ -6989,9 +6989,9 @@ function App() {
             type="button"
             className="logo logo-button"
             onClick={closeLogin}
-            aria-label="Back to HostelConnect home"
+            aria-label="Back to TravelBoost home"
           >
-            Hostel<span>Connect</span>
+            Travel<span>Boost</span>
           </button>
 
           <button
@@ -7019,7 +7019,7 @@ function App() {
             </h1>
 
             <p>
-              Secure access to the HostelConnect
+              Secure access to the TravelBoost
               authority portal.
             </p>
           </div>
@@ -7109,7 +7109,7 @@ function App() {
 
             <p className="login-register-text">
               Authority access is restricted to
-              verified HostelConnect partners.
+              verified TravelBoost partners.
             </p>
           </form>
         </main>
@@ -7134,9 +7134,9 @@ function App() {
             type="button"
             className="logo logo-button"
             onClick={closeLogin}
-            aria-label="Back to HostelConnect home"
+            aria-label="Back to TravelBoost home"
           >
-            Hostel<span>Connect</span>
+            Travel<span>Boost</span>
           </button>
 
           <button
@@ -7160,7 +7160,7 @@ function App() {
 
             <h1>
               Welcome back to{" "}
-              <span>HostelConnect.</span>
+              <span>TravelBoost.</span>
             </h1>
 
             <p>
@@ -7252,7 +7252,7 @@ function App() {
 
             <p className="login-register-text">
               Local provider access is reserved
-              for registered HostelConnect partners.
+              for registered TravelBoost partners.
             </p>
           </form>
         </main>
@@ -7279,9 +7279,9 @@ function App() {
             type="button"
             className="logo logo-button"
             onClick={closeLogin}
-            aria-label="Back to HostelConnect home"
+            aria-label="Back to TravelBoost home"
           >
-            Hostel<span>Connect</span>
+            Travel<span>Boost</span>
           </button>
 
           <button
@@ -7307,7 +7307,7 @@ function App() {
 
             <h1>
               Welcome back to{" "}
-              <span>HostelConnect.</span>
+              <span>TravelBoost.</span>
             </h1>
 
             <p>
@@ -7423,7 +7423,7 @@ function App() {
             </button>
 
             <p className="login-register-text">
-              New to HostelConnect?{" "}
+              New to TravelBoost?{" "}
               <button
                 type="button"
                 onClick={openRegister}
@@ -7456,9 +7456,9 @@ function App() {
             type="button"
             className="logo logo-button"
             onClick={closeLogin}
-            aria-label="Back to HostelConnect home"
+            aria-label="Back to TravelBoost home"
           >
-            Hostel<span>Connect</span>
+            Travel<span>Boost</span>
           </button>
 
           <button
@@ -7477,7 +7477,7 @@ function App() {
             </div>
 
             <p className="tag">
-              JOIN HOSTELCONNECT
+              JOIN TRAVELBOOST
             </p>
 
             <h1>
@@ -7619,9 +7619,9 @@ function App() {
             type="button"
             className="logo logo-button"
             onClick={closeLogin}
-            aria-label="Back to HostelConnect home"
+            aria-label="Back to TravelBoost home"
           >
-            Hostel<span>Connect</span>
+            Travel<span>Boost</span>
           </button>
 
           <button
@@ -7643,7 +7643,7 @@ function App() {
 
             <h1>
               Welcome to{" "}
-              <span>HostelConnect.</span>
+              <span>TravelBoost.</span>
             </h1>
 
             <p>
@@ -7770,7 +7770,7 @@ function App() {
               scrollToSection("home")
             }
           >
-            Hostel<span>Connect</span>
+            Travel<span>Boost</span>
           </button>
 
           <div className="nav-links">
@@ -7914,7 +7914,7 @@ function App() {
 
                   <div>
                     <p>
-                      HostelConnect Pick
+                      TravelBoost Pick
                     </p>
 
                     <strong>
@@ -8024,7 +8024,7 @@ function App() {
           }
           aria-label="Go to home"
         >
-          Hostel<span>Connect</span>
+          Travel<span>Boost</span>
         </button>
 
         <div className="nav-links">
@@ -8177,7 +8177,7 @@ function App() {
 
                 try {
                   window.sessionStorage.removeItem(
-                    "hostelconnect.guest"
+                    "travelboost.guest"
                   );
                 } catch {
                   /* nothing else to clear */
@@ -8209,7 +8209,7 @@ function App() {
           </h1>
 
           <p className="description hero-description">
-            HostelConnect helps you discover
+            TravelBoost helps you discover
             amazing destinations, plan
             unforgettable trips, and make
             every journey easier.
@@ -8440,7 +8440,7 @@ function App() {
       <footer className="footer">
 
         <div className="footer-logo">
-          Hostel<span>Connect</span>
+          Travel<span>Boost</span>
         </div>
 
         <p>
@@ -8449,7 +8449,7 @@ function App() {
         </p>
 
         <p className="footer-copy">
-          © 2026 HostelConnect. Built for
+          © 2026 TravelBoost. Built for
           explorers.
         </p>
 

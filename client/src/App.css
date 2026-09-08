@@ -1,7 +1,7 @@
 @import url("https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap");
 
 /* ============================================================================
-   HOSTELCONNECT — LIQUID GLASS DESIGN SYSTEM
+   TRAVELBOOST — LIQUID GLASS DESIGN SYSTEM
    ----------------------------------------------------------------------------
    Layering hierarchy (background → glass panels → content → accents):
 
@@ -28,7 +28,7 @@
    1. DESIGN TOKENS
 ========================================================= */
 :root {
-  /* HostelConnect cyan / blue identity */
+  /* TravelBoost cyan / blue identity */
   --cyan-300: #67e8f9;
   --cyan-400: #22d3ee;
   --cyan-500: #06b6d4;

@@ -186,7 +186,7 @@ function setMode(next: StoreMode) {
 
 type Table = Record<string, Record<string, unknown>>;
 
-const LS_KEY = "hostelconnect.deviceStore.v1";
+const LS_KEY = "travelboost.deviceStore.v1";
 
 function readTables(): Table {
   try {
