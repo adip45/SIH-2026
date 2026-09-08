@@ -12,7 +12,9 @@ body,
 
 body {
   margin: 0;
-  background: #f7f1e8;
+  /* Matches the lightest stop of the Liquid Glass ambient gradient in
+     App.css so the first paint never flashes a stale color. */
+  background: #f2fbff;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }

@@ -95,9 +95,20 @@
    2. REUSABLE GLASS UTILITIES
 ========================================================= */
 
-/* -- Base glass surface (tunable via --glass-* vars) ------- */
+/* -- Base glass surface (tunable via --glass-* vars) -------
+   Component classes below opt into the treatment simply by
+   declaring --glass-* custom properties; keeping the surface
+   definition in one place avoids duplicated glass recipes. */
 .glass-panel,
-.glass-card {
+.glass-card,
+.hero-card,
+.feature,
+.login-role-card,
+.user-login-card,
+.dashboard-card,
+.dashboard-feature-card,
+.destination-main-info,
+.highlights-section {
   position: relative;
   background: linear-gradient(
     150deg,
@@ -192,7 +203,8 @@
 }
 
 /* -- Dark navy glass ---------------------------------------- */
-.glass-navy {
+.glass-navy,
+.plan-trip-box {
   position: relative;
   background: linear-gradient(
     150deg,
@@ -534,7 +546,8 @@ body::after {
 
 /* -- Primary (gradient, elevated) --------------------------- */
 .primary-btn,
-.login-btn {
+.login-btn,
+.location-search-btn {
   position: relative;
   overflow: hidden;
   display: inline-flex;
@@ -562,7 +575,8 @@ body::after {
 }
 
 .primary-btn::after,
-.login-btn::after {
+.login-btn::after,
+.location-search-btn::after {
   content: "";
   position: absolute;
   top: -20%;
@@ -581,12 +595,14 @@ body::after {
 }
 
 .primary-btn:hover::after,
-.login-btn:hover::after {
+.login-btn:hover::after,
+.location-search-btn:hover::after {
   transform: translateX(340%) skewX(-16deg);
 }
 
 .primary-btn:hover,
-.login-btn:hover {
+.login-btn:hover,
+.location-search-btn:hover {
   transform: translateY(-3px) scale(1.015);
   filter: saturate(1.08) brightness(1.04);
   box-shadow:
@@ -596,7 +612,8 @@ body::after {
 }
 
 .primary-btn:active,
-.login-btn:active {
+.login-btn:active,
+.location-search-btn:active {
   transform: translateY(-1px) scale(0.985);
   transition-duration: 0.12s;
 }
@@ -867,6 +884,12 @@ select.glass-input {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.95),
     0 8px 20px -12px rgba(9, 52, 88, 0.2);
+}
+
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 /* =========================================================
@@ -1352,6 +1375,66 @@ select.glass-input {
     inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 
+/* Floating frosted location badge, top-left of the photo */
+.destination-badge {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 13px;
+  border-radius: 999px;
+  background: rgba(8, 28, 51, 0.52);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
+  backdrop-filter: blur(12px) saturate(150%);
+  color: #e8f6ff;
+  font-family: var(--font-head);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 10px 22px -12px rgba(2, 10, 20, 0.55);
+  transition:
+    transform 0.45s var(--ease),
+    background-color 0.3s ease,
+    border-color 0.3s ease;
+}
+
+.destination-card:hover .destination-badge {
+  transform: translateY(-3px);
+  background: rgba(8, 28, 51, 0.62);
+  border-color: rgba(103, 232, 249, 0.4);
+}
+
+/* Glass metadata chips (best time / duration) inside the overlay */
+.destination-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.destination-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  color: rgba(232, 246, 255, 0.92);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
 /* =========================================================
    12. FEATURES
 ========================================================= */
@@ -1377,7 +1460,7 @@ select.glass-input {
   gap: 8px;
   padding: clamp(26px, 3vw, 38px);
   text-align: left;
-  border: none;
+  border-style: solid; /* width/color from base glass surface */
   cursor: pointer;
   transition:
     transform 0.45s var(--ease),
@@ -1867,7 +1950,7 @@ select.glass-input {
   gap: 18px;
   padding: 26px 24px;
   text-align: left;
-  border: none;
+  border-style: solid; /* width/color from base glass surface */
   cursor: pointer;
   transition:
     transform 0.45s var(--ease),
@@ -2576,11 +2659,26 @@ select.glass-input {
 }
 
 .dashboard-feature-card {
+  --glass-a: 0.64;
+  --glass-b: 0.36;
+  --glass-c: 0.52;
+  --glass-radius: var(--radius-lg);
+  --glass-shadow: 0 20px 48px -22px rgba(9, 52, 88, 0.22);
+
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 8px;
   padding: 28px;
+  transition:
+    transform 0.45s var(--ease),
+    box-shadow 0.45s ease,
+    border-color 0.35s ease;
+}
+
+.dashboard-feature-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(103, 232, 249, 0.45);
 }
 
 .dashboard-feature-card .dashboard-card-icon {
@@ -2939,7 +3037,8 @@ select.glass-input {
     0 14px 34px -20px rgba(9, 52, 88, 0.22);
 }
 
-.dashboard-footer span {
+.dashboard-footer span,
+.dashboard-footer button {
   padding: 9px 16px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.6);
@@ -2957,13 +3056,18 @@ select.glass-input {
     box-shadow 0.3s ease;
 }
 
-.dashboard-footer span:hover {
+.dashboard-footer span:hover,
+.dashboard-footer button:hover {
   color: var(--accent-ink);
   border-color: rgba(14, 165, 233, 0.4);
   transform: translateY(-2px);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.95),
     0 10px 22px -10px rgba(14, 116, 187, 0.32);
+}
+
+.dashboard-footer button:active {
+  transform: translateY(0) scale(0.97);
 }
 
 /* =========================================================
@@ -3286,6 +3390,11 @@ select.glass-input {
     height: 400px;
   }
 
+  .destination-badge {
+    top: 12px;
+    left: 12px;
+  }
+
   .features {
     grid-template-columns: 1fr;
   }
@@ -3454,5 +3563,289 @@ select.glass-input {
 
   .reveal.is-visible > * {
     animation: none;
+  }
+}
+
+/* =========================================================
+   23. POLISH PASS
+   Entrance choreography, skip link, mobile navigation,
+   password reveal control, anchor offsets.
+========================================================= */
+
+/* -- Anchored sections clear the sticky navbar (the hero itself
+     is designed to sit under the translucent navbar, so #home
+     keeps a zero offset) --------------------------------------- */
+#destinations,
+#about {
+  scroll-margin-top: 92px;
+}
+
+/* -- View transition: each top-level view fades in when swapped -- */
+.app {
+  animation: appIn 0.5s var(--ease-soft);
+}
+
+@keyframes appIn {
+  from {
+    opacity: 0;
+  }
+}
+
+/* -- Skip link (keyboard users jump past the navbar) ------------ */
+.skip-link {
+  position: absolute;
+  top: -70px;
+  left: 14px;
+  z-index: 1300;
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 18px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  backdrop-filter: blur(16px) saturate(160%);
+  border: 1px solid rgba(14, 165, 233, 0.35);
+  color: var(--accent-ink);
+  font-family: var(--font-head);
+  font-size: 13.5px;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 18px 36px -18px rgba(9, 52, 88, 0.35);
+  transition: top 0.3s var(--ease);
+}
+
+.skip-link:focus {
+  top: 12px;
+}
+
+/* -- Touch affordances ------------------------------------------ */
+button,
+a {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* -- Hero entrance choreography (CSS-only, runs on page load) --- */
+.hero-content > * {
+  animation: riseIn 0.85s var(--ease) backwards;
+}
+
+.hero-content > :nth-child(1) { animation-delay: 60ms; }
+.hero-content > :nth-child(2) { animation-delay: 140ms; }
+.hero-content > :nth-child(3) { animation-delay: 220ms; }
+.hero-content > :nth-child(4) { animation-delay: 300ms; }
+
+.hero-card {
+  animation: heroPanelIn 1.05s var(--ease) 200ms backwards;
+}
+
+@keyframes heroPanelIn {
+  from {
+    opacity: 0;
+    scale: 0.94;
+    filter: blur(12px);
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+    filter: blur(0);
+  }
+}
+
+/* -- Mobile hamburger toggle (visible only when links collapse) -- */
+.nav-menu-toggle {
+  display: none;
+  position: relative;
+  flex-shrink: 0;
+  width: 46px;
+  height: 46px;
+  border-radius: 15px;
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  background: rgba(255, 255, 255, 0.55);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 8px 20px -12px rgba(9, 52, 88, 0.22);
+  cursor: pointer;
+  transition:
+    transform 0.3s var(--ease),
+    border-color 0.3s ease,
+    background-color 0.3s ease;
+}
+
+.nav-menu-toggle:hover {
+  transform: translateY(-2px);
+  border-color: rgba(14, 165, 233, 0.45);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.nav-menu-toggle-bar {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  height: 2px;
+  border-radius: 99px;
+  background: var(--ink);
+  transition:
+    transform 0.35s var(--ease),
+    opacity 0.25s ease;
+}
+
+.nav-menu-toggle-bar:nth-child(1) { top: 16px; }
+.nav-menu-toggle-bar:nth-child(2) { top: 22px; }
+.nav-menu-toggle-bar:nth-child(3) { top: 28px; }
+
+.nav-menu-toggle.is-open .nav-menu-toggle-bar:nth-child(1) {
+  transform: translateY(6px) rotate(45deg);
+}
+
+.nav-menu-toggle.is-open .nav-menu-toggle-bar:nth-child(2) {
+  opacity: 0;
+}
+
+.nav-menu-toggle.is-open .nav-menu-toggle-bar:nth-child(3) {
+  transform: translateY(-6px) rotate(-45deg);
+}
+
+@media (max-width: 560px) {
+  .nav-menu-toggle {
+    display: inline-grid;
+    place-items: center;
+  }
+}
+
+/* -- Glass dropdown for collapsed navigation --------------------- */
+.mobile-nav-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: clamp(12px, 3vw, 20px);
+  right: clamp(12px, 3vw, 20px);
+  z-index: 1250;
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 22px;
+  background: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.88) 0%,
+    rgba(240, 250, 255, 0.78) 55%,
+    rgba(255, 255, 255, 0.84) 100%
+  );
+  -webkit-backdrop-filter: blur(24px) saturate(170%);
+  backdrop-filter: blur(24px) saturate(170%);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 30px 64px -20px rgba(9, 52, 88, 0.38);
+  animation: riseIn 0.4s var(--ease) backwards;
+}
+
+.mobile-nav-menu button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 14px;
+  border: none;
+  border-radius: 15px;
+  background: transparent;
+  font-family: var(--font-head);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition:
+    background-color 0.25s ease,
+    color 0.25s ease,
+    transform 0.3s var(--ease);
+}
+
+.mobile-nav-menu button:hover {
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--accent-ink);
+}
+
+.mobile-nav-menu button:active {
+  transform: scale(0.985);
+}
+
+.mobile-nav-menu .menu-icon {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  font-size: 15px;
+  background: linear-gradient(
+    145deg,
+    rgba(103, 232, 249, 0.28),
+    rgba(59, 130, 246, 0.12)
+  );
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+
+.mobile-nav-menu .login-btn {
+  margin-top: 4px;
+  width: 100%;
+}
+
+/* -- Password reveal control ------------------------------------- */
+.password-field {
+  position: relative;
+}
+
+.password-field input {
+  padding-right: 52px;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  translate: 0 -50%;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    color 0.25s ease,
+    background-color 0.25s ease,
+    border-color 0.25s ease;
+}
+
+.password-toggle:hover {
+  color: var(--accent-ink);
+  background: rgba(14, 165, 233, 0.1);
+  border-color: rgba(14, 165, 233, 0.22);
+}
+
+/* Keep entrance choreography calm when motion is reduced */
+@media (prefers-reduced-motion: reduce) {
+  .hero-content > *,
+  .hero-card,
+  .mobile-nav-menu,
+  .app {
+    animation: none;
+  }
+
+  .skip-link {
+    transition: none;
+  }
+}
+
+/* Fallback: no backdrop support → opaque menu and toggle chrome */
+@supports not ((backdrop-filter: blur(4px)) or (-webkit-backdrop-filter: blur(4px))) {
+  .mobile-nav-menu {
+    background: rgba(255, 255, 255, 0.96);
   }
 }

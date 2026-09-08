@@ -139,11 +139,98 @@ const AppleIcon = () => (
   </svg>
 );
 
+const EyeIcon = () => (
+  <svg
+    viewBox="0 0 24 24"
+    width="17"
+    height="17"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12Z" />
+    <circle cx="12" cy="12" r="2.6" />
+  </svg>
+);
+
+const EyeOffIcon = () => (
+  <svg
+    viewBox="0 0 24 24"
+    width="17"
+    height="17"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M10.7 6.2A9.9 9.9 0 0 1 12 5.5c6.4 0 10 6.5 10 6.5a17.4 17.4 0 0 1-2.4 3.2M6.3 7.9A16.6 16.6 0 0 0 2 12s3.6 6.5 10 6.5a10 10 0 0 0 4.1-.86" />
+    <path d="m2 2 20 20" />
+  </svg>
+);
+
+type PasswordFieldProps = {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+};
+
+function PasswordField({
+  id,
+  label,
+  value,
+  onChange,
+  placeholder,
+}: PasswordFieldProps) {
+  const [visible, setVisible] = useState(false);
+
+  return (
+    <div className="login-input-group">
+      <label htmlFor={id}>{label}</label>
+
+      <div className="password-field">
+        <input
+          id={id}
+          type={visible ? "text" : "password"}
+          placeholder={placeholder}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          autoComplete="current-password"
+        />
+
+        <button
+          type="button"
+          className="password-toggle"
+          onClick={() => setVisible((current) => !current)}
+          aria-pressed={visible}
+          aria-label={visible ? "Hide password" : "Show password"}
+          title={visible ? "Hide password" : "Show password"}
+        >
+          {visible ? <EyeOffIcon /> : <EyeIcon />}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [selectedDestination, setSelectedDestination] =
     useState<Destination | null>(null);
 
   const [showLogin, setShowLogin] = useState(false);
+
+  /* =========================================================
+     MOBILE NAVIGATION (small screens; presentation only)
+  ========================================================= */
+
+  const [mobileMenuOpen, setMobileMenuOpen] =
+    useState(false);
 
   /* =========================================================
      GLASS TOASTS (in-app notifications replacing alert())
@@ -554,10 +641,32 @@ function App() {
   }, [dashboardSection, localDashboardSection, authorityDashboardSection]);
 
   /* =========================================================
+     MOBILE MENU — dismiss with Escape for keyboard users
+  ========================================================= */
+
+  useEffect(() => {
+    if (!mobileMenuOpen) {
+      return;
+    }
+
+    const handleEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMobileMenuOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleEscape);
+
+    return () =>
+      window.removeEventListener("keydown", handleEscape);
+  }, [mobileMenuOpen]);
+
+  /* =========================================================
      NAVIGATION
   ========================================================= */
 
   const scrollToSection = (id: string) => {
+    setMobileMenuOpen(false);
     setSelectedDestination(null);
     setShowLogin(false);
     setShowUserLogin(false);
@@ -603,6 +712,7 @@ function App() {
   };
 
   const openLogin = () => {
+    setMobileMenuOpen(false);
     setSelectedDestination(null);
     setShowUserLogin(false);
     setShowLocalLogin(false);
@@ -1086,6 +1196,11 @@ function App() {
                     ? "dashboard-nav-btn active"
                     : "dashboard-nav-btn"
                 }
+                aria-current={
+                  authorityDashboardSection === section
+                    ? "page"
+                    : undefined
+                }
                 onClick={() =>
                   openAuthorityDashboardSection(section)
                 }
@@ -1520,12 +1635,64 @@ function App() {
           )}
         </main>
 
-        <footer className="dashboard-footer">
-          <span>🏠 Home</span>
-          <span>👥 Crowd</span>
-          <span>📝 Complaints</span>
-          <span>🚨 Safety</span>
-          <span>📊 Reports</span>
+        <footer
+          className="dashboard-footer"
+          aria-label="Authority quick navigation"
+        >
+          <button
+            type="button"
+            onClick={() =>
+              openAuthorityDashboardSection(
+                "overview"
+              )
+            }
+          >
+            🏠 Home
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              openAuthorityDashboardSection(
+                "crowd"
+              )
+            }
+          >
+            👥 Crowd
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              openAuthorityDashboardSection(
+                "complaints"
+              )
+            }
+          >
+            📝 Complaints
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              openAuthorityDashboardSection(
+                "safety"
+              )
+            }
+          >
+            🚨 Safety
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              openAuthorityDashboardSection(
+                "reports"
+              )
+            }
+          >
+            📊 Reports
+          </button>
         </footer>
 
         <ToastStack toasts={toasts} onDismiss={dismissToast} />
@@ -1883,6 +2050,7 @@ function App() {
                   ? "dashboard-nav-btn active"
                   : "dashboard-nav-btn"
               }
+              aria-current={dashboardSection === "overview" ? "page" : undefined}
               onClick={() =>
                 openUserDashboardSection(
                   "overview"
@@ -1899,6 +2067,7 @@ function App() {
                   ? "dashboard-nav-btn active"
                   : "dashboard-nav-btn"
               }
+              aria-current={dashboardSection === "connect" ? "page" : undefined}
               onClick={() =>
                 openUserDashboardSection(
                   "connect"
@@ -1915,6 +2084,7 @@ function App() {
                   ? "dashboard-nav-btn active"
                   : "dashboard-nav-btn"
               }
+              aria-current={dashboardSection === "crowd" ? "page" : undefined}
               onClick={() =>
                 openUserDashboardSection(
                   "crowd"
@@ -1931,6 +2101,7 @@ function App() {
                   ? "dashboard-nav-btn active"
                   : "dashboard-nav-btn"
               }
+              aria-current={dashboardSection === "cleanliness" ? "page" : undefined}
               onClick={() =>
                 openUserDashboardSection(
                   "cleanliness"
@@ -1947,6 +2118,7 @@ function App() {
                   ? "dashboard-nav-btn active"
                   : "dashboard-nav-btn"
               }
+              aria-current={dashboardSection === "emergency" ? "page" : undefined}
               onClick={() =>
                 openUserDashboardSection(
                   "emergency"
@@ -2009,6 +2181,7 @@ function App() {
                         disabled={
                           isSearchingLocation
                         }
+                        aria-busy={isSearchingLocation}
                       >
                         {isSearchingLocation
                           ? "Searching..."
@@ -2018,6 +2191,7 @@ function App() {
 
                     {locationSearchMessage && (
                       <small
+                        aria-live="polite"
                         className={
                           locationSearchMessage.includes(
                             "successfully"
@@ -2659,12 +2833,62 @@ function App() {
           )}
         </main>
 
-        <footer className="dashboard-footer">
-          <span>🏠 Home</span>
-          <span>🗺️ Explore</span>
-          <span>❤️ Saved</span>
-          <span>🎫 My Trips</span>
-          <span>👤 Profile</span>
+        <footer
+          className="dashboard-footer"
+          aria-label="Traveller quick navigation"
+        >
+          <button
+            type="button"
+            onClick={() =>
+              scrollToSection("home")
+            }
+          >
+            🏠 Home
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              scrollToSection("destinations")
+            }
+          >
+            🗺️ Explore
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              notify(
+                "Saved places appear here once the backend collection is connected.",
+                "info"
+              )
+            }
+          >
+            ❤️ Saved
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              notify(
+                "Your trips timeline is coming next.",
+                "info"
+              )
+            }
+          >
+            🎫 My Trips
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              openUserDashboardSection(
+                "overview"
+              )
+            }
+          >
+            👤 Profile
+          </button>
         </footer>
 
         <ToastStack toasts={toasts} onDismiss={dismissToast} />
@@ -2714,6 +2938,7 @@ function App() {
                   ? "dashboard-nav-btn active"
                   : "dashboard-nav-btn"
               }
+              aria-current={localDashboardSection === "profile" ? "page" : undefined}
               onClick={() =>
                 openLocalDashboardSection(
                   "profile"
@@ -2730,6 +2955,7 @@ function App() {
                   ? "dashboard-nav-btn active"
                   : "dashboard-nav-btn"
               }
+              aria-current={localDashboardSection === "details" ? "page" : undefined}
               onClick={() =>
                 openLocalDashboardSection(
                   "details"
@@ -2746,6 +2972,7 @@ function App() {
                   ? "dashboard-nav-btn active"
                   : "dashboard-nav-btn"
               }
+              aria-current={localDashboardSection === "requests" ? "page" : undefined}
               onClick={() =>
                 openLocalDashboardSection(
                   "requests"
@@ -2763,6 +2990,7 @@ function App() {
                     ? "dashboard-nav-btn active"
                     : "dashboard-nav-btn"
                 }
+                aria-current={localDashboardSection === "chats" ? "page" : undefined}
                 onClick={() =>
                   openLocalDashboardSection(
                     "chats"
@@ -3217,14 +3445,65 @@ function App() {
             )}
         </main>
 
-        <footer className="dashboard-footer">
-          <span>🏠 Home</span>
-          <span>📊 Dashboard</span>
-          <span>⭐ Reviews</span>
-          <span>📨 Requests</span>
+        <footer
+          className="dashboard-footer"
+          aria-label="Provider quick navigation"
+        >
+          <button
+            type="button"
+            onClick={() =>
+              scrollToSection("home")
+            }
+          >
+            🏠 Home
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              openLocalDashboardSection(
+                "profile"
+              )
+            }
+          >
+            📊 Dashboard
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              notify(
+                "Traveller reviews will be connected with the backend next.",
+                "info"
+              )
+            }
+          >
+            ⭐ Reviews
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              openLocalDashboardSection(
+                "requests"
+              )
+            }
+          >
+            📨 Requests
+          </button>
+
           {providerType !==
             "Arts & Crafts" && (
-            <span>💬 Chats</span>
+            <button
+              type="button"
+              onClick={() =>
+                openLocalDashboardSection(
+                  "chats"
+                )
+              }
+            >
+              💬 Chats
+            </button>
           )}
         </footer>
 
@@ -3306,24 +3585,13 @@ function App() {
               />
             </div>
 
-            <div className="login-input-group">
-              <label htmlFor="authority-password">
-                Password
-              </label>
-
-              <input
-                id="authority-password"
-                type="password"
-                placeholder="Enter your password"
-                value={authorityPassword}
-                onChange={(event) =>
-                  setAuthorityPassword(
-                    event.target.value
-                  )
-                }
-                autoComplete="current-password"
-              />
-            </div>
+            <PasswordField
+              id="authority-password"
+              label="Password"
+              placeholder="Enter your password"
+              value={authorityPassword}
+              onChange={setAuthorityPassword}
+            />
 
             <div className="login-form-options">
               <label className="remember-option">
@@ -3463,24 +3731,13 @@ function App() {
               />
             </div>
 
-            <div className="login-input-group">
-              <label htmlFor="local-password">
-                Password
-              </label>
-
-              <input
-                id="local-password"
-                type="password"
-                placeholder="Enter your password"
-                value={localPassword}
-                onChange={(event) =>
-                  setLocalPassword(
-                    event.target.value
-                  )
-                }
-                autoComplete="current-password"
-              />
-            </div>
+            <PasswordField
+              id="local-password"
+              label="Password"
+              placeholder="Enter your password"
+              value={localPassword}
+              onChange={setLocalPassword}
+            />
 
             <div className="login-form-options">
               <label className="remember-option">
@@ -3621,24 +3878,13 @@ function App() {
               />
             </div>
 
-            <div className="login-input-group">
-              <label htmlFor="user-password">
-                Password
-              </label>
-
-              <input
-                id="user-password"
-                type="password"
-                placeholder="Enter your password"
-                value={userPassword}
-                onChange={(event) =>
-                  setUserPassword(
-                    event.target.value
-                  )
-                }
-                autoComplete="current-password"
-              />
-            </div>
+            <PasswordField
+              id="user-password"
+              label="Password"
+              placeholder="Enter your password"
+              value={userPassword}
+              onChange={setUserPassword}
+            />
 
             <div className="login-form-options">
               <label className="remember-option">
@@ -4126,6 +4372,10 @@ function App() {
 
   return (
     <div className="app">
+      <a className="skip-link" href="#home">
+        Skip to content
+      </a>
+
       <div className="background-glow glow-one" />
       <div className="background-glow glow-two" />
       <div className="background-glow glow-three" />
@@ -4175,13 +4425,99 @@ function App() {
           </button>
         </div>
 
-        <button
-          type="button"
-          className="login-btn"
-          onClick={openLogin}
-        >
-          Get Started
-        </button>
+        <div className="nav-actions">
+          <button
+            type="button"
+            className={`nav-menu-toggle${
+              mobileMenuOpen ? " is-open" : ""
+            }`}
+            aria-label={
+              mobileMenuOpen ? "Close menu" : "Open menu"
+            }
+            aria-expanded={mobileMenuOpen}
+            aria-controls="mobile-nav"
+            onClick={() =>
+              setMobileMenuOpen((open) => !open)
+            }
+          >
+            <span className="nav-menu-toggle-bar" />
+            <span className="nav-menu-toggle-bar" />
+            <span className="nav-menu-toggle-bar" />
+          </button>
+
+          <button
+            type="button"
+            className="login-btn"
+            onClick={openLogin}
+          >
+            Get Started
+          </button>
+        </div>
+
+        {mobileMenuOpen && (
+          <div className="mobile-nav-menu" id="mobile-nav">
+            <button
+              type="button"
+              onClick={() =>
+                scrollToSection("home")
+              }
+            >
+              <span
+                className="menu-icon"
+                aria-hidden="true"
+              >
+                🏠
+              </span>
+
+              Home
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                scrollToSection(
+                  "destinations"
+                )
+              }
+            >
+              <span
+                className="menu-icon"
+                aria-hidden="true"
+              >
+                🧭
+              </span>
+
+              Explore
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                scrollToSection("about")
+              }
+            >
+              <span
+                className="menu-icon"
+                aria-hidden="true"
+              >
+                ✨
+              </span>
+
+              About
+            </button>
+
+            <button
+              type="button"
+              className="login-btn"
+              onClick={() => {
+                setMobileMenuOpen(false);
+                openLogin();
+              }}
+            >
+              Get Started
+            </button>
+          </div>
+        )}
       </nav>
 
       {/* HERO SECTION */}
@@ -4334,6 +4670,10 @@ function App() {
                   }}
                 />
 
+                <span className="destination-badge">
+                  📍 {destination.location}
+                </span>
+
                 <div className="destination-overlay">
 
                   <div>
@@ -4346,6 +4686,16 @@ function App() {
                         destination.location
                       }
                     </p>
+
+                    <div className="destination-meta">
+                      <span>
+                        🗓 {destination.bestTime}
+                      </span>
+
+                      <span>
+                        ⏱ {destination.duration}
+                      </span>
+                    </div>
                   </div>
 
                   <span className="destination-btn">
